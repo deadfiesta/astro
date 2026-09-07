@@ -257,11 +257,20 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
         pickables.push(moonMesh);
 
         const moonLabel = labelSprite('Moon', MOON.color);
-        moonLabel.scale.set(3.2, 0.8, 1);
-        moonLabel.position.y = 0.75;
+        moonLabel.scale.set(2.4, 0.6, 1);
+        moonLabel.position.y = 0.7;
         moonLabel.userData.id = 'moon';
         pickables.push(moonLabel);
         moonMesh.add(moonLabel);
+
+        // generous invisible tap target — the Moon itself is tiny and moving
+        const moonHit = new THREE.Mesh(
+          new THREE.SphereGeometry(0.6, 8, 6),
+          new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false })
+        );
+        moonHit.userData.id = 'moon';
+        pickables.push(moonHit);
+        moonMesh.add(moonHit);
 
         moon = new THREE.Group();
         moon.add(moonMesh);
@@ -280,8 +289,12 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
 
     // Bouncing astronaut: same take-off effort everywhere, so jump height and
     // hang time follow the selected world's real surface gravity (v² = 2gh).
-    const JUMP_V = 3.8; // take-off speed in scene units/s (tuned so Earth ≈ 0.8 high)
-    const { group: astro, body: astroBody, limbs: astroLimbs, waveArm } = buildAstronaut();
+    // Take-off speed tuned to a real human jump: on Earth (G = 9) this gives
+    // ~0.25 units of height (about a third of the astronaut's body) and a
+    // realistic ~0.47 s of airtime. Every other world scales from the same
+    // effort, so the Moon's leap is ~6x Earth's, Jupiter's a stubby hop.
+    const JUMP_V = 2.12;
+    const { group: astro, body: astroBody, limbs: astroLimbs, swingArm, waveArm } = buildAstronaut();
     astro.visible = false;
     scene.add(astro);
     const astroState = {
@@ -427,9 +440,12 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
           }
         }
 
-        // one arm keeps waving hello (spring target oscillates overhead)
+        // one arm keeps waving hello (spring target oscillates overhead);
+        // the other swings back through the crouch and up on take-off,
+        // like a real jumper loading their arms
         astroState.waveT += spd * dt;
         waveArm.rest = -2.35 + 0.35 * Math.sin(astroState.waveT * 7);
+        swingArm.rest = swingArm.baseRest + 1.1 * crouch;
 
         // limbs lag behind the body's vertical acceleration and flail on impact
         const accel = dt > 0 ? (astroState.vy - astroState.prevVy) / dt : 0;
