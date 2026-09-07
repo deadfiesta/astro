@@ -348,7 +348,7 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
       id: null, G: 0, v0: 0, s: 1, sq: 0, sqV: 0,
       mode: 'air', groundT: 0, waveT: 0, h: 0, hv: 0, lean: 0,
       dW: 0.16, w1: 13, w2: 13, tAbs: 0.12, tPush: 0.12,
-      struggle: false, tStrain: 0, suspend: false, hoverBase: 1,
+      struggle: false, tStrain: 0, suspend: false, hoverBase: 1, burning: false,
       pos: new THREE.Vector3(), vel: new THREE.Vector3(),
       prevVel: new THREE.Vector3(), dragTarget: new THREE.Vector3(),
       normal: new THREE.Vector3(0, 1, 0), accelSm: new THREE.Vector3(),
@@ -362,6 +362,28 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
       grab.position.y = 0.65;
       astro.add(grab);
     }
+
+    // burning feet on stars: additive flame particles — each ember spawns at
+    // the boots, rises with buoyancy, flickers, and cools from white-hot
+    // through orange to dark red (black = invisible under additive blending)
+    const FLAME_N = 130;
+    const flameGeo = new THREE.BufferGeometry();
+    const flamePos = new Float32Array(FLAME_N * 3);
+    const flameCol = new Float32Array(FLAME_N * 3);
+    flameGeo.setAttribute('position', new THREE.BufferAttribute(flamePos, 3));
+    flameGeo.setAttribute('color', new THREE.BufferAttribute(flameCol, 3));
+    const flameParts = [];
+    for (let i = 0; i < FLAME_N; i++) {
+      flameParts.push({ x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, life: 0.5, age: 999, phase: Math.random() * Math.PI * 2 });
+    }
+    const flames = new THREE.Points(flameGeo, new THREE.PointsMaterial({
+      size: 0.11, sizeAttenuation: true, vertexColors: true, transparent: true,
+      blending: THREE.AdditiveBlending, depthWrite: false,
+    }));
+    flames.visible = false;
+    astro.add(flames);
+    let flameI = 0; // eased flame intensity
+    let flameTime = 0;
     function setAstronaut(id) {
       const ent = id ? byId[id] : null;
       const g = ent?.data.gravity;
@@ -394,6 +416,8 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
       astroState.struggle = G > 100;
       astroState.tStrain = 0;
       astroState.mode = 'air';
+      // standing on a star means standing IN fire
+      astroState.burning = ent.data.orbit === 0;
       // gas worlds have no surface: the astronaut floats in the thick gas
       astroState.suspend = !!ent.data.gas;
       astroState.hoverBase = 0.12 + ent.data.radius * 0.05;
@@ -857,6 +881,65 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
         const leanTarget = held ? THREE.MathUtils.clamp(-st.vel.dot(vR) * 0.045, -0.5, 0.5) : 0;
         st.lean += (leanTarget - st.lean) * Math.min(1, dt * 8);
         astro.quaternion.multiply(qTmp.setFromAxisAngle(Z_AXIS, st.lean));
+
+        // flame simulation: burns near a star's surface, snuffs out when
+        // the astronaut is lifted away
+        flameTime += dt;
+        const nearSurface = st.pos.length() - surfR < 1.2;
+        const want = st.burning && nearSurface ? 1 : 0;
+        flameI += (want - flameI) * Math.min(1, dt * 5);
+        flames.visible = flameI > 0.02;
+        if (flames.visible) {
+          for (let i = 0; i < FLAME_N; i++) {
+            const p = flameParts[i];
+            p.age += dt;
+            if (p.age >= p.life) {
+              if (flameI > 0.05) {
+                // respawn in a ring around the boots
+                const a = Math.random() * Math.PI * 2;
+                const r = 0.06 + Math.random() * 0.24;
+                p.x = Math.cos(a) * r;
+                p.y = Math.random() * 0.06;
+                p.z = Math.sin(a) * r * 0.7;
+                p.vx = (Math.random() - 0.5) * 0.28;
+                p.vy = 0.8 + Math.random() * 0.9;
+                p.vz = (Math.random() - 0.5) * 0.28;
+                p.life = 0.35 + Math.random() * 0.45;
+                p.age = 0;
+              } else {
+                flameCol[i * 3] = flameCol[i * 3 + 1] = flameCol[i * 3 + 2] = 0;
+                continue;
+              }
+            }
+            // buoyant rise, narrowing toward the tip, side-to-side flicker
+            p.vy += 1.3 * dt;
+            p.x += (p.vx + Math.sin(flameTime * 22 + p.phase) * 0.22) * dt - p.x * 0.9 * dt;
+            p.z += (p.vz + Math.cos(flameTime * 19 + p.phase) * 0.16) * dt - p.z * 0.9 * dt;
+            p.y += p.vy * dt;
+            flamePos[i * 3] = p.x;
+            flamePos[i * 3 + 1] = p.y;
+            flamePos[i * 3 + 2] = p.z;
+            // cooling color ramp: white-hot -> yellow -> orange -> dark red
+            const t = p.age / p.life;
+            let cr, cg, cb;
+            if (t < 0.18) {
+              const k = t / 0.18;
+              cr = 1; cg = 0.95 - 0.25 * k; cb = 0.65 - 0.5 * k;
+            } else if (t < 0.55) {
+              const k = (t - 0.18) / 0.37;
+              cr = 1; cg = 0.7 - 0.4 * k; cb = 0.15 - 0.12 * k;
+            } else {
+              const k = (t - 0.55) / 0.45;
+              cr = 1 - 0.6 * k; cg = 0.3 - 0.28 * k; cb = 0.03;
+            }
+            const fade = Math.pow(1 - t, 1.4) * (0.82 + 0.18 * Math.sin(flameTime * 26 + p.phase)) * flameI;
+            flameCol[i * 3] = cr * fade;
+            flameCol[i * 3 + 1] = cg * fade;
+            flameCol[i * 3 + 2] = cb * fade;
+          }
+          flameGeo.attributes.position.needsUpdate = true;
+          flameGeo.attributes.color.needsUpdate = true;
+        }
       }
 
       // camera follow: the approach flies into a framing that keeps the body
