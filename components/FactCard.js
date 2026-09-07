@@ -2,6 +2,17 @@
 
 import { useEffect, useRef, useState } from 'react';
 
+// gravity chip built from the same value that drives the astronaut physics
+function chipsFor(body) {
+  const chips = [...body.chips];
+  if (body.gravity) {
+    const rel = body.gravity;
+    const relText = rel === 1 ? 'that’s Earth!' : `${parseFloat(rel.toFixed(2))}× of Earth’s`;
+    chips.push(['🧲 Gravity', `${(rel * 9.81).toFixed(1)} m/s² (${relText})`]);
+  }
+  return chips;
+}
+
 export default function FactCard({ body, onClose }) {
   const facts = body?.funFacts ?? [];
   const [idx, setIdx] = useState(0);
@@ -53,7 +64,7 @@ export default function FactCard({ body, onClose }) {
           </div>
           <p id="card-fact">{body.fact}</p>
           <div id="card-chips">
-            {body.chips.map(([label, value]) => (
+            {chipsFor(body).map(([label, value]) => (
               <div className="chip" key={label}>
                 <span className="chip-label">{label}</span>
                 <span className="chip-value">{value}</span>
