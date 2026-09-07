@@ -144,7 +144,6 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
 
     const bodies = [];
     const pickables = [];
-    const gasSwirls = []; // rotating particle shells around gas planets
     let moonMesh = null;
 
     // Kuiper Belt: an icy doughnut of frozen chunks past Neptune
@@ -219,38 +218,6 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
 
       const spinGroup = new THREE.Group(); // holds mesh + rings, gets axial tilt
       spinGroup.add(mesh);
-
-      if (b.gas) {
-        // gas planets get two counter-rotating particle shells — swirling
-        // cloud bands drifting over the surface
-        const rnd = mulberry(Math.round(b.orbit * 13) + 5);
-        for (let shell = 0; shell < 2; shell++) {
-          const N = 220;
-          const posArr = new Float32Array(N * 3);
-          const rr = b.radius * (1.06 + shell * 0.09);
-          for (let i = 0; i < N; i++) {
-            const t = rnd() * Math.PI * 2;
-            const p = Math.asin((rnd() - 0.5) * 1.88); // latitude, equator-biased
-            posArr[i * 3] = rr * Math.cos(p) * Math.cos(t);
-            posArr[i * 3 + 1] = rr * Math.sin(p);
-            posArr[i * 3 + 2] = rr * Math.cos(p) * Math.sin(t);
-          }
-          const geo = new THREE.BufferGeometry();
-          geo.setAttribute('position', new THREE.BufferAttribute(posArr, 3));
-          const cloud = new THREE.Points(geo, new THREE.PointsMaterial({
-            color: shell ? '#FFFFFF' : b.color,
-            size: b.radius * 0.055,
-            sizeAttenuation: true,
-            transparent: true,
-            opacity: shell ? 0.45 : 0.7,
-            depthWrite: false,
-          }));
-          const swirl = new THREE.Group();
-          swirl.add(cloud);
-          spinGroup.add(swirl);
-          gasSwirls.push({ group: swirl, speed: (shell ? -0.5 : 0.9) * (0.6 + rnd() * 0.5) });
-        }
-      }
       if (b.tilted) spinGroup.rotation.z = Math.PI / 2 * 0.98;
       else if (b.id === 'earth') spinGroup.rotation.z = 0.41;
       else if (b.id === 'saturn') spinGroup.rotation.z = 0.47;
@@ -616,7 +583,6 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
         b.mesh.rotation.y += d.spinSpeed * spd * dt * 2.2;
         if (b.moon) b.moon.rotation.y += 1.6 * spd * dt;
       }
-      for (const s of gasSwirls) s.group.rotation.y += s.speed * spd * dt;
 
       // astronaut: jump cycle, finger-drag, and a natural ballistic fall —
       // gravity points at the planet's core, landings happen wherever the
@@ -629,6 +595,17 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
 
         let crouch = 0;
         let bodyDip = 0; // world-units body drop while the knees absorb
+
+        // when standing (or hopping/hovering) the astronaut rides the
+        // planet's spin, staying glued to the surface spot it landed on
+        if (st.mode === 'ground' || st.mode === 'air' || st.mode === 'hover') {
+          const spinDelta = (aEnt.data.spinSpeed || 0) * spd * dt * 2.2;
+          if (spinDelta && aEnt.mesh) {
+            aEnt.mesh.parent.getWorldQuaternion(qTmp);
+            vT.set(0, 1, 0).applyQuaternion(qTmp); // the planet's spin axis
+            st.normal.applyAxisAngle(vT, spinDelta);
+          }
+        }
 
         if (st.mode === 'drag') {
           // the finger asks; gravity resists. The pull behaves like a tether:
