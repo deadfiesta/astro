@@ -334,6 +334,7 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
         L.omega = 0;
         L.group.rotation.set(0, 0, L.baseRest);
         if (L.knee) L.knee.rotation.x = 0;
+        if (L.elbow) L.elbow.rotation.z = 0;
       }
       astro.visible = true;
     }
@@ -440,12 +441,25 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
           }
         }
 
-        // one arm keeps waving hello (spring target oscillates overhead);
-        // the other swings back through the crouch and up on take-off,
-        // like a real jumper loading their arms
+        // low-gravity worlds: near the apex the astronaut spreads out like
+        // they're trying to fly. floatiness: 0 at >=0.6g, 1 as g approaches 0
+        const floatiness = THREE.MathUtils.clamp(1 - astroState.G / 9 / 0.6, 0, 1);
+        let spread = 0;
+        if (astroState.mode === 'air' && astroState.v0 > 0) {
+          const apex = 1 - Math.min(1, Math.abs(astroState.vy) / astroState.v0);
+          spread = floatiness * apex * apex; // eases in toward the top
+        }
+
         astroState.waveT += spd * dt;
-        waveArm.rest = -2.35 + 0.35 * Math.sin(astroState.waveT * 7);
-        swingArm.rest = swingArm.baseRest + 1.1 * crouch;
+        // waving arm: overhead wave, blending to a horizontal wing when floating
+        const waveTarget = -2.35 + 0.35 * Math.sin(astroState.waveT * 7);
+        waveArm.rest = THREE.MathUtils.lerp(waveTarget, -1.75, spread);
+        // free arm: loads through the crouch, flings up and out when floating
+        swingArm.rest = THREE.MathUtils.lerp(swingArm.baseRest + 1.1 * crouch, 1.75, spread);
+        // legs: drift into a star shape at a floaty apex
+        for (const L of astroLimbs) {
+          if (L.knee) L.rest = THREE.MathUtils.lerp(L.baseRest, L.out * 0.55, spread);
+        }
 
         // limbs lag behind the body's vertical acceleration and flail on impact
         const accel = dt > 0 ? (astroState.vy - astroState.prevVy) / dt : 0;
@@ -460,6 +474,13 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
           if (L.theta > L.rest + lim) { L.theta = L.rest + lim; L.omega = 0; }
           if (L.theta < L.rest - lim) { L.theta = L.rest - lim; L.omega = 0; }
           L.group.rotation.z = L.theta;
+
+          // elbows: passive trailing bend from the swing, plus the hello-wave
+          if (L.elbow) {
+            let bend = L.out * 0.18 + THREE.MathUtils.clamp(-L.omega * 0.35, -0.7, 0.7);
+            if (L === waveArm) bend += Math.sin(astroState.waveT * 7) * 0.45 * (1 - spread);
+            L.elbow.rotation.z = bend;
+          }
         }
 
         // crouch pose: hips drop, thighs swing forward, knees fold back
