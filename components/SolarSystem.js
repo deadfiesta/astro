@@ -306,7 +306,7 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
     // realistic ~0.47 s of airtime. Every other world scales from the same
     // effort, so the Moon's leap is ~6x Earth's, Jupiter's a stubby hop.
     const JUMP_V = 2.12;
-    const { group: astro, body: astroBody, limbs: astroLimbs, swingArm, waveArm } = buildAstronaut();
+    const { group: astro, body: astroBody, limbs: astroLimbs, swingArm, waveArm, outfits: astroOutfits } = buildAstronaut();
     astro.visible = false;
     scene.add(astro);
     // pos/vel are relative to the planet's center. normal is the surface
@@ -334,6 +334,9 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
     function setAstronaut(id) {
       const ent = id ? byId[id] : null;
       const g = ent?.data.gravity;
+      // dress for the weather: hot worlds get beach gear, cold ones get
+      // winter layers; Earth (and anywhere unlisted) keeps the plain suit
+      for (const key in astroOutfits) astroOutfits[key].visible = key === id;
       if (!ent || !g) {
         astro.visible = false;
         astroState.id = null;
