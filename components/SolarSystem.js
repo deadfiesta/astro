@@ -299,10 +299,24 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
     const { group: astro, body: astroBody, limbs: astroLimbs, swingArm, waveArm } = buildAstronaut();
     astro.visible = false;
     scene.add(astro);
+    // off/vel are the astronaut's offset+velocity relative to the planet-top
+    // anchor. mode: air/ground = jump cycle, drag = held by a finger,
+    // fall = released and dropping back to the surface
     const astroState = {
-      id: null, G: 0, v0: 0, y: 0, vy: 0, prevVy: 0, s: 1, sq: 0, sqV: 0,
+      id: null, G: 0, v0: 0, s: 1, sq: 0, sqV: 0,
       mode: 'air', groundT: 0, waveT: 0,
+      off: new THREE.Vector3(), vel: new THREE.Vector3(),
+      prevVel: new THREE.Vector3(), dragTarget: new THREE.Vector3(),
     };
+    // generous invisible grab handle so fingers can catch the astronaut
+    {
+      const grab = new THREE.Mesh(
+        new THREE.SphereGeometry(0.85, 8, 6),
+        new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false })
+      );
+      grab.position.y = 0.65;
+      astro.add(grab);
+    }
     function setAstronaut(id) {
       const ent = id ? byId[id] : null;
       const g = ent?.data.gravity;
@@ -318,12 +332,13 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
       astroState.id = id;
       astroState.G = G;
       astroState.v0 = Math.sqrt(2 * G * h);
-      astroState.y = 0;
-      astroState.vy = astroState.v0;
-      astroState.prevVy = astroState.v0;
+      astroState.off.set(0, 0, 0);
+      astroState.vel.set(0, astroState.v0, 0);
+      astroState.prevVel.copy(astroState.vel);
       astroState.sq = 0;
       astroState.sqV = 0;
       astroState.mode = 'air';
+      astro.rotation.z = 0;
       astroState.groundT = 0;
       astroState.waveT = 0;
       astroState.s = THREE.MathUtils.clamp(ent.data.radius * 0.55, 0.5, 1.6);
@@ -363,29 +378,74 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
       }
     }
 
-    // tap-to-pick (touch and mouse via pointer events)
+    // tap-to-pick and astronaut dragging (touch and mouse via pointer events)
     const raycaster = new THREE.Raycaster();
     const pointer = new THREE.Vector2();
+    const dragPlane = new THREE.Plane();
+    const dragPoint = new THREE.Vector3();
+    const dragNormal = new THREE.Vector3();
     let downAt = null;
+    let dragPointerId = null;
+
+    const setPointer = (e) => {
+      const rect = canvas.getBoundingClientRect();
+      pointer.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+      pointer.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+      raycaster.setFromCamera(pointer, camera);
+    };
+
+    const releaseAstro = () => {
+      if (dragPointerId === null) return;
+      dragPointerId = null;
+      controls.enabled = true;
+      if (astroState.id) astroState.mode = 'fall'; // keeps the fling velocity
+    };
+
     const onDown = (e) => {
+      // grab the astronaut first — dragging it beats camera gestures
+      if (astro.visible && astroState.id && dragPointerId === null) {
+        setPointer(e);
+        if (raycaster.intersectObject(astro, true).length) {
+          dragPointerId = e.pointerId;
+          astroState.mode = 'drag';
+          astroState.dragTarget.copy(astro.position);
+          astroState.vel.set(0, 0, 0);
+          controls.enabled = false;
+          canvas.setPointerCapture?.(e.pointerId);
+          dragPlane.setFromNormalAndCoplanarPoint(
+            camera.getWorldDirection(dragNormal), astro.position
+          );
+          return;
+        }
+      }
       downAt = { x: e.clientX, y: e.clientY, t: performance.now() };
     };
+    const onMove = (e) => {
+      if (e.pointerId !== dragPointerId) return;
+      setPointer(e);
+      if (raycaster.ray.intersectPlane(dragPlane, dragPoint)) {
+        astroState.dragTarget.copy(dragPoint);
+      }
+    };
     const onUp = (e) => {
+      if (e.pointerId === dragPointerId) {
+        releaseAstro();
+        return;
+      }
       if (!downAt) return;
       const moved = Math.hypot(e.clientX - downAt.x, e.clientY - downAt.y);
       const dt = performance.now() - downAt.t;
       downAt = null;
       if (moved > 12 || dt > 600) return; // it was a drag, not a tap
 
-      const rect = canvas.getBoundingClientRect();
-      pointer.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
-      pointer.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
-      raycaster.setFromCamera(pointer, camera);
+      setPointer(e);
       const hits = raycaster.intersectObjects(pickables, false);
       if (hits.length) onSelectRef.current?.(hits[0].object.userData.id);
     };
     canvas.addEventListener('pointerdown', onDown);
+    canvas.addEventListener('pointermove', onMove);
     canvas.addEventListener('pointerup', onUp);
+    canvas.addEventListener('pointercancel', onUp);
 
     // sizing; also decides where the fact card docks (side vs bottom sheet)
     const view = { side: false };
@@ -419,56 +479,108 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
         if (b.moon) b.moon.rotation.y += 1.6 * spd * dt;
       }
 
-      // astronaut jump cycle: land -> crouch (knees bend) -> push off -> fly
+      // astronaut: jump cycle, finger-drag, and fall-back-and-bounce
       if (astroState.id) {
+        const st = astroState;
+        const aEnt = byId[st.id];
+        aEnt.pivot.getWorldPosition(tmp3);
+        const anchorX = tmp3.x;
+        const anchorY = tmp3.y + aEnt.data.radius * 0.98;
+        const anchorZ = tmp3.z;
+
         const T_CROUCH = 0.24; // seconds spent squatting between bounces
         let crouch = 0;
-        if (astroState.mode === 'ground') {
-          astroState.groundT += spd * dt;
-          const p = Math.min(astroState.groundT / T_CROUCH, 1);
+
+        if (st.mode === 'drag') {
+          // the finger leads; measured velocity feeds the ragdoll and the fling
+          tmp.set(st.dragTarget.x - anchorX, st.dragTarget.y - anchorY, st.dragTarget.z - anchorZ);
+          if (tmp.length() > 14) tmp.setLength(14);
+          if (tmp.y < 0) tmp.y = 0; // can't push below the surface
+          if (dt > 0) {
+            tmp2.subVectors(tmp, st.off).divideScalar(dt);
+            st.vel.lerp(tmp2, 0.5);
+          }
+          st.off.copy(tmp);
+        } else if (st.mode === 'fall') {
+          st.vel.y -= st.G * spd * dt;
+          // gentle homing pulls any drift back over the planet's top
+          st.vel.x += (-6 * st.off.x - 2 * st.vel.x) * spd * dt;
+          st.vel.z += (-6 * st.off.z - 2 * st.vel.z) * spd * dt;
+          st.off.addScaledVector(st.vel, spd * dt);
+          if (st.off.y <= 0 && st.vel.y < 0) {
+            st.off.y = 0;
+            if (-st.vel.y > Math.max(st.v0 * 1.05, 1.0)) {
+              st.vel.y = -st.vel.y * 0.45; // bounce with damping
+              st.vel.x *= 0.6;
+              st.vel.z *= 0.6;
+              st.sq = -0.28;
+            } else {
+              st.off.set(0, 0, 0);
+              st.vel.set(0, 0, 0);
+              st.mode = 'ground'; // settled — rejoin the jump cycle
+              st.groundT = 0;
+              st.sq = -0.2;
+            }
+          }
+        } else if (st.mode === 'ground') {
+          st.groundT += spd * dt;
+          const p = Math.min(st.groundT / T_CROUCH, 1);
           crouch = Math.sin(Math.PI * p); // dip down, then push up
           if (p >= 1) {
-            astroState.mode = 'air';
-            astroState.vy = astroState.v0; // take-off
+            st.mode = 'air';
+            st.vel.y = st.v0; // take-off
           }
         } else {
-          astroState.vy -= astroState.G * spd * dt;
-          astroState.y += astroState.vy * spd * dt;
-          if (astroState.y <= 0 && astroState.vy < 0) {
-            astroState.y = 0;
-            astroState.vy = 0;
-            astroState.mode = 'ground';
-            astroState.groundT = 0;
-            astroState.sq = -0.22; // landing squash, springs back below
+          st.vel.y -= st.G * spd * dt;
+          st.off.y += st.vel.y * spd * dt;
+          if (st.off.y <= 0 && st.vel.y < 0) {
+            st.off.y = 0;
+            st.vel.y = 0;
+            st.mode = 'ground';
+            st.groundT = 0;
+            st.sq = -0.22; // landing squash, springs back below
           }
         }
+
+        const held = st.mode === 'drag' || st.mode === 'fall';
 
         // low-gravity worlds: near the apex the astronaut spreads out like
         // they're trying to fly. floatiness: 0 at >=0.6g, 1 as g approaches 0
-        const floatiness = THREE.MathUtils.clamp(1 - astroState.G / 9 / 0.6, 0, 1);
+        const floatiness = THREE.MathUtils.clamp(1 - st.G / 9 / 0.6, 0, 1);
         let spread = 0;
-        if (astroState.mode === 'air' && astroState.v0 > 0) {
-          const apex = 1 - Math.min(1, Math.abs(astroState.vy) / astroState.v0);
+        if (!held && st.mode === 'air' && st.v0 > 0) {
+          const apex = 1 - Math.min(1, Math.abs(st.vel.y) / st.v0);
           spread = floatiness * apex * apex; // eases in toward the top
         }
 
-        astroState.waveT += spd * dt;
-        // both arms raised overhead in a mirrored "hooray" wave; they dip
-        // during the crouch and flatten into wings when floating at an apex
-        const wave = 0.35 * Math.sin(astroState.waveT * 7);
-        waveArm.rest = THREE.MathUtils.lerp(2.35 + wave - 1.4 * crouch, 1.75, spread);
-        swingArm.rest = THREE.MathUtils.lerp(-2.35 - wave + 1.4 * crouch, -1.75, spread);
-        // legs: drift into a star shape at a floaty apex
-        for (const L of astroLimbs) {
-          if (L.knee) L.rest = THREE.MathUtils.lerp(L.baseRest, L.out * 0.55, spread);
+        if (held) {
+          // held or falling: all posing stops — pure limp ragdoll dangling
+          waveArm.rest = waveArm.baseRest;
+          swingArm.rest = swingArm.baseRest;
+          for (const L of astroLimbs) {
+            if (L.knee) L.rest = L.baseRest;
+          }
+        } else {
+          st.waveT += spd * dt;
+          // both arms raised overhead in a mirrored "hooray" wave; they dip
+          // during the crouch and flatten into wings when floating at an apex
+          const wave = 0.35 * Math.sin(st.waveT * 7);
+          waveArm.rest = THREE.MathUtils.lerp(2.35 + wave - 1.4 * crouch, 1.75, spread);
+          swingArm.rest = THREE.MathUtils.lerp(-2.35 - wave + 1.4 * crouch, -1.75, spread);
+          // legs: drift into a star shape at a floaty apex
+          for (const L of astroLimbs) {
+            if (L.knee) L.rest = THREE.MathUtils.lerp(L.baseRest, L.out * 0.55, spread);
+          }
         }
 
-        // limbs lag behind the body's vertical acceleration and flail on impact
-        const accel = dt > 0 ? (astroState.vy - astroState.prevVy) / dt : 0;
-        astroState.prevVy = astroState.vy;
-        const kick = THREE.MathUtils.clamp(accel, -60, 60);
+        // ragdoll kicks from vertical AND view-plane horizontal acceleration
+        tmp.subVectors(st.vel, st.prevVel).divideScalar(Math.max(dt, 1e-4));
+        st.prevVel.copy(st.vel);
+        const kickY = THREE.MathUtils.clamp(tmp.y, -60, 60);
+        tmp2.set(1, 0, 0).applyQuaternion(camera.quaternion); // camera right
+        const kickH = THREE.MathUtils.clamp(tmp.dot(tmp2), -60, 60);
         for (const L of astroLimbs) {
-          const drive = -kick * 0.35 * L.out * L.gain;
+          const drive = (-kickY * 0.35 * L.out + kickH * 0.25) * L.gain;
           const alpha = -26 * (L.theta - L.rest) - 5 * L.omega + drive;
           L.omega += alpha * dt;
           L.theta += L.omega * dt;
@@ -480,7 +592,7 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
           // elbows: passive trailing bend from the swing, plus the hello-wave
           if (L.elbow) {
             let bend = L.out * 0.18 + THREE.MathUtils.clamp(-L.omega * 0.35, -0.7, 0.7);
-            const wag = Math.sin(astroState.waveT * 7) * 0.45 * (1 - spread);
+            const wag = held ? 0 : Math.sin(st.waveT * 7) * 0.45 * (1 - spread);
             if (L === waveArm) bend += wag;
             if (L === swingArm) bend -= wag;
             L.elbow.rotation.z = bend;
@@ -496,23 +608,20 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
         }
 
         // cartoon squash-and-stretch spring on the whole body
-        astroState.sqV += (-180 * astroState.sq - 14 * astroState.sqV) * dt;
-        astroState.sq += astroState.sqV * dt;
-        const s = astroState.s;
-        astro.scale.set(s * (1 - astroState.sq * 0.6), s * (1 + astroState.sq), s * (1 - astroState.sq * 0.6));
+        st.sqV += (-180 * st.sq - 14 * st.sqV) * dt;
+        st.sq += st.sqV * dt;
+        const s = st.s;
+        astro.scale.set(s * (1 - st.sq * 0.6), s * (1 + st.sq), s * (1 - st.sq * 0.6));
 
-        const aEnt = byId[astroState.id];
-        aEnt.pivot.getWorldPosition(tmp3);
-        astro.position.set(
-          tmp3.x,
-          tmp3.y + aEnt.data.radius * 0.98 + astroState.y,
-          tmp3.z
-        );
+        astro.position.set(anchorX + st.off.x, anchorY + st.off.y, anchorZ + st.off.z);
         // billboard: keep the visor facing the camera
         astro.rotation.y = Math.atan2(
           camera.position.x - astro.position.x,
           camera.position.z - astro.position.z
         );
+        // lean into sideways motion while held or flung, upright otherwise
+        const lean = held ? THREE.MathUtils.clamp(-st.vel.dot(tmp2) * 0.045, -0.5, 0.5) : 0;
+        astro.rotation.z += (lean - astro.rotation.z) * Math.min(1, dt * 8);
       }
 
       // camera follows the selected body (world position — Pluto orbits in a tilted plane)
@@ -555,7 +664,9 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
       cancelAnimationFrame(raf);
       window.removeEventListener('resize', fit);
       canvas.removeEventListener('pointerdown', onDown);
+      canvas.removeEventListener('pointermove', onMove);
       canvas.removeEventListener('pointerup', onUp);
+      canvas.removeEventListener('pointercancel', onUp);
       controls.dispose();
       scene.traverse((obj) => {
         obj.geometry?.dispose?.();
