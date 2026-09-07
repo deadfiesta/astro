@@ -144,6 +144,7 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
 
     const bodies = [];
     const pickables = [];
+    const gasSwirls = []; // rotating particle shells around gas planets
     let moonMesh = null;
 
     // Kuiper Belt: an icy doughnut of frozen chunks past Neptune
@@ -218,6 +219,38 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
 
       const spinGroup = new THREE.Group(); // holds mesh + rings, gets axial tilt
       spinGroup.add(mesh);
+
+      if (b.gas) {
+        // gas planets get two counter-rotating particle shells — swirling
+        // cloud bands drifting over the surface
+        const rnd = mulberry(Math.round(b.orbit * 13) + 5);
+        for (let shell = 0; shell < 2; shell++) {
+          const N = 220;
+          const posArr = new Float32Array(N * 3);
+          const rr = b.radius * (1.06 + shell * 0.09);
+          for (let i = 0; i < N; i++) {
+            const t = rnd() * Math.PI * 2;
+            const p = Math.asin((rnd() - 0.5) * 1.88); // latitude, equator-biased
+            posArr[i * 3] = rr * Math.cos(p) * Math.cos(t);
+            posArr[i * 3 + 1] = rr * Math.sin(p);
+            posArr[i * 3 + 2] = rr * Math.cos(p) * Math.sin(t);
+          }
+          const geo = new THREE.BufferGeometry();
+          geo.setAttribute('position', new THREE.BufferAttribute(posArr, 3));
+          const cloud = new THREE.Points(geo, new THREE.PointsMaterial({
+            color: shell ? '#FFFFFF' : b.color,
+            size: b.radius * 0.055,
+            sizeAttenuation: true,
+            transparent: true,
+            opacity: shell ? 0.45 : 0.7,
+            depthWrite: false,
+          }));
+          const swirl = new THREE.Group();
+          swirl.add(cloud);
+          spinGroup.add(swirl);
+          gasSwirls.push({ group: swirl, speed: (shell ? -0.5 : 0.9) * (0.6 + rnd() * 0.5) });
+        }
+      }
       if (b.tilted) spinGroup.rotation.z = Math.PI / 2 * 0.98;
       else if (b.id === 'earth') spinGroup.rotation.z = 0.41;
       else if (b.id === 'saturn') spinGroup.rotation.z = 0.47;
@@ -338,7 +371,7 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
       id: null, G: 0, v0: 0, s: 1, sq: 0, sqV: 0,
       mode: 'air', groundT: 0, waveT: 0, h: 0, hv: 0, lean: 0,
       dW: 0.16, w1: 13, w2: 13, tAbs: 0.12, tPush: 0.12,
-      struggle: false, tStrain: 0,
+      struggle: false, tStrain: 0, suspend: false, hoverBase: 1,
       pos: new THREE.Vector3(), vel: new THREE.Vector3(),
       prevVel: new THREE.Vector3(), dragTarget: new THREE.Vector3(),
       normal: new THREE.Vector3(0, 1, 0),
@@ -383,6 +416,16 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
       astroState.struggle = G > 100;
       astroState.tStrain = 0;
       astroState.mode = 'air';
+      // gas worlds have no surface: the astronaut floats in the thick gas
+      astroState.suspend = !!ent.data.gas;
+      astroState.hoverBase = 0.4 + ent.data.radius * 0.12;
+      if (astroState.suspend) {
+        astroState.mode = 'hover';
+        astroState.h = astroState.hoverBase;
+        astroState.groundT = 0;
+        astroState.vel.set(0, 0, 0);
+        astroState.prevVel.set(0, 0, 0);
+      }
       astroState.groundT = 0;
       astroState.waveT = 0;
       astroState.s = THREE.MathUtils.clamp(ent.data.radius * 0.55, 0.5, 1.6);
@@ -573,6 +616,7 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
         b.mesh.rotation.y += d.spinSpeed * spd * dt * 2.2;
         if (b.moon) b.moon.rotation.y += 1.6 * spd * dt;
       }
+      for (const s of gasSwirls) s.group.rotation.y += s.speed * spd * dt;
 
       // astronaut: jump cycle, finger-drag, and a natural ballistic fall —
       // gravity points at the planet's core, landings happen wherever the
@@ -624,7 +668,20 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
           if (vT.length() > maxT) vT.setLength(maxT);
           st.vel.copy(vT).addScaledVector(vN, vRad);
           st.pos.addScaledVector(st.vel, spd * dt);
-          if (st.pos.length() <= surfR) {
+          if (st.suspend) {
+            // no surface to hit — the thick gas brakes the fall into a float
+            const alt = st.pos.length() - surfR;
+            if (alt < st.hoverBase + 1.5) {
+              st.vel.multiplyScalar(Math.max(0, 1 - 4 * spd * dt));
+              if (st.vel.length() < 0.6) {
+                st.normal.copy(st.pos).normalize();
+                st.h = Math.max(alt, 0.15);
+                st.groundT = 0;
+                st.mode = 'hover';
+              }
+            }
+            if (st.pos.length() < surfR + 0.1) st.pos.setLength(surfR + 0.1);
+          } else if (st.pos.length() <= surfR) {
             vN.copy(st.pos).normalize();
             st.pos.copy(vN).multiplyScalar(surfR);
             const vn = st.vel.dot(vN); // impact speed along the normal
@@ -642,6 +699,13 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
               landAstronaut(-vn);
             }
           }
+        } else if (st.mode === 'hover') {
+          // suspended in the gas — no landing, just a slow buoyant bob
+          st.groundT += spd * dt;
+          const target = st.hoverBase + 0.25 * Math.sin(st.groundT * 1.2);
+          st.h += (target - st.h) * Math.min(1, dt * 2);
+          st.pos.copy(st.normal).multiplyScalar(surfR + st.h);
+          st.vel.copy(st.normal).multiplyScalar(0.3 * Math.cos(st.groundT * 1.2));
         } else if (st.mode === 'ground') {
           st.groundT += spd * dt;
           const t = st.groundT;
@@ -693,6 +757,10 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
         if (!held && st.mode === 'air' && st.v0 > 0) {
           const apex = 1 - Math.min(1, Math.abs(st.hv) / st.v0);
           spread = floatiness * apex * apex; // eases in toward the top
+        }
+        if (!held && st.mode === 'hover') {
+          // floating in the gas: arms drift out into a relaxed swimming pose
+          spread = 0.55 + 0.12 * Math.sin(st.groundT * 1.5);
         }
 
         if (held) {
