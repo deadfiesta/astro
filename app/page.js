@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
-import { BODIES } from '@/lib/bodies';
+import { CARDS } from '@/lib/bodies';
 import FactCard from '@/components/FactCard';
 import PlanetPicker from '@/components/PlanetPicker';
 import ControlBar from '@/components/ControlBar';
@@ -44,7 +44,7 @@ export default function Home() {
     sceneRef.current?.resetView();
   }, [deselect]);
 
-  const body = BODIES.find((b) => b.id === selectedId) ?? null;
+  const body = CARDS.find((b) => b.id === selectedId) ?? null;
 
   return (
     <main>

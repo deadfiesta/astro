@@ -12,6 +12,12 @@ import {
 const HOME_POS = new THREE.Vector3(0, 42, 70);
 const HOME_TARGET = new THREE.Vector3(0, 0, 0);
 
+// belt/cloud selections fly to a fixed viewpoint instead of following a body
+const FEATURE_VIEWS = {
+  kuiper: new THREE.Vector3(0, 45, 98),
+  oort: new THREE.Vector3(0, 140, 265),
+};
+
 /* The whole Three.js scene lives here. React state stays outside;
    the animation loop reads live values through refs. */
 const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused, onSelect }, ref) {
@@ -26,12 +32,18 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
   useEffect(() => { pausedRef.current = paused; }, [paused]);
   useEffect(() => { onSelectRef.current = onSelect; }, [onSelect]);
 
-  // when the selection changes, size the camera offset to the body
+  // when the selection changes, size the camera offset to the body,
+  // or fly to a fixed viewpoint for belt/cloud features
   useEffect(() => {
     selectedRef.current = selectedId;
     const w = world.current;
     if (!w || !selectedId) return;
-    const d = w.byId[selectedId].data;
+    if (FEATURE_VIEWS[selectedId]) {
+      w.flyTo(FEATURE_VIEWS[selectedId].clone(), HOME_TARGET.clone());
+      return;
+    }
+    const d = w.byId[selectedId]?.data;
+    if (!d) return;
     const dist = Math.max(d.radius * 4.2, 5.5);
     w.followOffset.set(dist * 0.55, dist * 0.5, dist);
   }, [selectedId]);
@@ -60,7 +72,7 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
     controls.dampingFactor = 0.08;
     controls.enablePan = false;
     controls.minDistance = 4;
-    controls.maxDistance = 160;
+    controls.maxDistance = 320;
     controls.touches.ONE = THREE.TOUCH.ROTATE;
     controls.touches.TWO = THREE.TOUCH.DOLLY_ROTATE;
 
@@ -106,6 +118,59 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
     const bodies = [];
     const pickables = [];
 
+    // Kuiper Belt: an icy doughnut of frozen chunks past Neptune
+    {
+      const rnd = mulberry(777);
+      const N = 1400;
+      const pos = new Float32Array(N * 3);
+      for (let i = 0; i < N; i++) {
+        const r = 52 + rnd() * 10;
+        const t = rnd() * Math.PI * 2;
+        pos[i * 3] = r * Math.cos(t);
+        pos[i * 3 + 1] = (rnd() - 0.5) * 3.2;
+        pos[i * 3 + 2] = r * Math.sin(t);
+      }
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+      scene.add(new THREE.Points(geo, new THREE.PointsMaterial({
+        color: '#A9D6F5', size: 1.5, sizeAttenuation: false, transparent: true, opacity: 0.85,
+      })));
+
+      const label = labelSprite('Kuiper Belt', '#A9D6F5');
+      label.scale.set(12, 3, 1);
+      label.position.set(0, 5, 57);
+      label.userData.id = 'kuiper';
+      pickables.push(label);
+      scene.add(label);
+    }
+
+    // Oort Cloud: a faint spherical bubble wrapping the whole solar system
+    {
+      const rnd = mulberry(31415);
+      const N = 3000;
+      const pos = new Float32Array(N * 3);
+      for (let i = 0; i < N; i++) {
+        const r = 120 + rnd() * 40;
+        const t = rnd() * Math.PI * 2;
+        const p = Math.acos(2 * rnd() - 1);
+        pos[i * 3] = r * Math.sin(p) * Math.cos(t);
+        pos[i * 3 + 1] = r * Math.cos(p);
+        pos[i * 3 + 2] = r * Math.sin(p) * Math.sin(t);
+      }
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+      scene.add(new THREE.Points(geo, new THREE.PointsMaterial({
+        color: '#9FB8D8', size: 1.1, sizeAttenuation: false, transparent: true, opacity: 0.55,
+      })));
+
+      const label = labelSprite('Oort Cloud', '#9FB8D8');
+      label.scale.set(18, 4.5, 1);
+      label.position.set(0, 50, 128);
+      label.userData.id = 'oort';
+      pickables.push(label);
+      scene.add(label);
+    }
+
     for (const b of BODIES) {
       const isSun = b.id === 'sun';
       const geo = new THREE.SphereGeometry(b.radius, 48, 32);
@@ -142,6 +207,14 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
         spinGroup.add(ring);
       }
 
+      // tilted orbit plane (Pluto) — orbit line and pivot live inside the tilt
+      let orbitParent = scene;
+      if (b.inclination) {
+        orbitParent = new THREE.Group();
+        orbitParent.rotation.x = b.inclination;
+        scene.add(orbitParent);
+      }
+
       const pivot = new THREE.Group(); // positioned on the orbit
       pivot.add(spinGroup);
 
@@ -164,7 +237,7 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
           const t = (i / 128) * Math.PI * 2;
           pts.push(new THREE.Vector3(Math.cos(t) * b.orbit, 0, Math.sin(t) * b.orbit));
         }
-        scene.add(new THREE.Line(
+        orbitParent.add(new THREE.Line(
           new THREE.BufferGeometry().setFromPoints(pts),
           new THREE.LineBasicMaterial({ color: b.color, transparent: true, opacity: 0.35 })
         ));
@@ -184,11 +257,47 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
         pivot.add(moon);
       }
 
-      scene.add(pivot);
+      orbitParent.add(pivot);
       bodies.push({ data: b, pivot, mesh, moon, angle: Math.random() * Math.PI * 2 });
     }
 
     const byId = Object.fromEntries(bodies.map((x) => [x.data.id, x]));
+
+    // Comet: eccentric tilted orbit from the Kuiper Belt to the inner system.
+    // Ellipse with the Sun at one focus: perihelion a-c = 8, aphelion a+c = 68.
+    const comet = { angle: 0.7, a: 38, c: 30, b: Math.sqrt(38 * 38 - 30 * 30) };
+    const cometOrbit = new THREE.Group();
+    cometOrbit.rotation.set(0.18, 0, 0.12);
+    scene.add(cometOrbit);
+    const cometPivot = new THREE.Group();
+    cometOrbit.add(cometPivot);
+    {
+      const head = new THREE.Mesh(
+        new THREE.SphereGeometry(0.4, 24, 16),
+        new THREE.MeshBasicMaterial({ color: '#EAF8FF' })
+      );
+      head.userData.id = 'comet';
+      pickables.push(head);
+      cometPivot.add(head);
+
+      const label = labelSprite('Comet', '#BFEFFF');
+      label.scale.set(6, 1.5, 1);
+      label.position.y = 1.6;
+      label.userData.id = 'comet';
+      pickables.push(label);
+      cometPivot.add(label);
+    }
+    const cometTail = new THREE.Mesh(
+      new THREE.ConeGeometry(0.32, 3, 12, 1, true),
+      new THREE.MeshBasicMaterial({
+        color: '#BFEFFF', transparent: true, opacity: 0.45,
+        blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide,
+      })
+    );
+    cometTail.userData.id = 'comet';
+    pickables.push(cometTail);
+    cometPivot.add(cometTail);
+    byId.comet = { data: { id: 'comet', radius: 0.5 }, pivot: cometPivot };
 
     // smooth camera fly (instant under reduced motion)
     let fly = null;
@@ -204,9 +313,11 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
     world.current = { camera, controls, byId, flyTo, followOffset: new THREE.Vector3() };
     // re-apply the current selection now that the scene exists
     if (selectedRef.current) {
-      const d = byId[selectedRef.current].data;
-      const dist = Math.max(d.radius * 4.2, 5.5);
-      world.current.followOffset.set(dist * 0.55, dist * 0.5, dist);
+      const d = byId[selectedRef.current]?.data;
+      if (d) {
+        const dist = Math.max(d.radius * 4.2, 5.5);
+        world.current.followOffset.set(dist * 0.55, dist * 0.5, dist);
+      }
     }
 
     // tap-to-pick (touch and mouse via pointer events)
@@ -246,6 +357,9 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
     // animation loop
     const clock = new THREE.Clock();
     const tmp = new THREE.Vector3();
+    const tmp2 = new THREE.Vector3();
+    const tmp3 = new THREE.Vector3();
+    const UP = new THREE.Vector3(0, 1, 0);
     let raf;
 
     function animate() {
@@ -261,13 +375,29 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
         if (b.moon) b.moon.rotation.y += 1.6 * spd * dt;
       }
 
-      // camera follows the selected body
+      // comet sweeps faster near the Sun; tail always points away from it
+      {
+        const r = cometPivot.position.length() || 8;
+        comet.angle += spd * dt * 0.3 * Math.min(2.5, 30 / r);
+        cometPivot.position.set(
+          comet.a * Math.cos(comet.angle) - comet.c, 0, comet.b * Math.sin(comet.angle)
+        );
+        const dir = tmp2.copy(cometPivot.position).normalize();
+        const len = Math.min(2.4, Math.max(0.7, 30 / cometPivot.position.length()));
+        cometTail.scale.set(len, len, len);
+        // cone apex sits on the comet head, base streams away from the Sun
+        cometTail.position.copy(dir).multiplyScalar((3 * len) / 2 + 0.3);
+        cometTail.quaternion.setFromUnitVectors(UP, tmp3.copy(dir).negate());
+      }
+
+      // camera follows the selected body (world position — Pluto orbits in a tilted plane)
       const sel = selectedRef.current;
-      if (sel && !fly) {
-        const p = byId[sel].pivot.position;
-        tmp.copy(p).add(world.current.followOffset);
+      const ent = sel ? byId[sel] : null;
+      if (ent && !fly) {
+        ent.pivot.getWorldPosition(tmp2);
+        tmp.copy(tmp2).add(world.current.followOffset);
         camera.position.lerp(tmp, reducedMotion ? 1 : 0.06);
-        controls.target.lerp(p, reducedMotion ? 1 : 0.12);
+        controls.target.lerp(tmp2, reducedMotion ? 1 : 0.12);
       }
 
       if (fly) {
