@@ -385,7 +385,7 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
       astroState.mode = 'air';
       // gas worlds have no surface: the astronaut floats in the thick gas
       astroState.suspend = !!ent.data.gas;
-      astroState.hoverBase = 0.4 + ent.data.radius * 0.12;
+      astroState.hoverBase = 0.12 + ent.data.radius * 0.05;
       if (astroState.suspend) {
         astroState.mode = 'hover';
         astroState.h = astroState.hoverBase;
@@ -669,7 +669,7 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
         } else if (st.mode === 'hover') {
           // suspended in the gas — no landing, just a slow buoyant bob
           st.groundT += spd * dt;
-          const target = st.hoverBase + 0.25 * Math.sin(st.groundT * 1.2);
+          const target = st.hoverBase + 0.1 * Math.sin(st.groundT * 1.2);
           st.h += (target - st.h) * Math.min(1, dt * 2);
           st.pos.copy(st.normal).multiplyScalar(surfR + st.h);
           st.vel.copy(st.normal).multiplyScalar(0.3 * Math.cos(st.groundT * 1.2));
