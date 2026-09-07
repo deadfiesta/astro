@@ -1,13 +1,15 @@
 'use client';
 
-import { BODIES } from '@/lib/bodies';
+import { BODIES, MOON } from '@/lib/bodies';
 
-/* Only the Sun and planets get picker buttons; the Kuiper Belt and Oort
-   Cloud stay reachable by tapping their floating labels in the scene. */
+/* Sun, planets, and the Moon (tucked in after Earth) get picker buttons;
+   the Kuiper Belt and Oort Cloud stay reachable via their in-scene labels. */
+const PICKS = BODIES.flatMap((b) => (b.id === 'earth' ? [b, MOON] : [b]));
+
 export default function PlanetPicker({ selectedId, onSelect }) {
   return (
     <div id="picker" aria-label="Pick a planet">
-      {BODIES.map((b) => (
+      {PICKS.map((b) => (
         <button
           key={b.id}
           className={`planet-btn${selectedId === b.id ? ' active' : ''}`}

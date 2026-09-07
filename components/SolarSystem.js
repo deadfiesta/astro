@@ -3,7 +3,7 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-import { BODIES } from '@/lib/bodies';
+import { BODIES, MOON } from '@/lib/bodies';
 import {
   makeCanvas, mulberry, rockyTexture, ringTexture, sunTexture, sunGlowTexture,
   labelSprite, textureFor,
@@ -120,6 +120,7 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
 
     const bodies = [];
     const pickables = [];
+    let moonMesh = null;
 
     // Kuiper Belt: an icy doughnut of frozen chunks past Neptune
     {
@@ -248,12 +249,20 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
 
       let moon = null;
       if (b.hasMoon) {
-        const moonMesh = new THREE.Mesh(
-          new THREE.SphereGeometry(0.27, 24, 16),
+        moonMesh = new THREE.Mesh(
+          new THREE.SphereGeometry(MOON.radius, 24, 16),
           new THREE.MeshLambertMaterial({ map: rockyTexture('#C9C4BC', '#8F8A82', 5) })
         );
-        moonMesh.userData.id = b.id;
+        moonMesh.userData.id = 'moon';
         pickables.push(moonMesh);
+
+        const moonLabel = labelSprite('Moon', MOON.color);
+        moonLabel.scale.set(3.2, 0.8, 1);
+        moonLabel.position.y = 0.75;
+        moonLabel.userData.id = 'moon';
+        pickables.push(moonLabel);
+        moonMesh.add(moonLabel);
+
         moon = new THREE.Group();
         moon.add(moonMesh);
         moonMesh.position.x = 2.0;
@@ -265,14 +274,20 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
     }
 
     const byId = Object.fromEntries(bodies.map((x) => [x.data.id, x]));
+    // the Moon is selectable like a planet; its "pivot" is the mesh itself,
+    // so world-position tracking follows it around Earth
+    if (moonMesh) byId.moon = { data: MOON, pivot: moonMesh };
 
     // Bouncing astronaut: same take-off effort everywhere, so jump height and
     // hang time follow the selected world's real surface gravity (v² = 2gh).
     const JUMP_V = 3.8; // take-off speed in scene units/s (tuned so Earth ≈ 0.8 high)
-    const { group: astro, limbs: astroLimbs } = buildAstronaut();
+    const { group: astro, body: astroBody, limbs: astroLimbs, waveArm } = buildAstronaut();
     astro.visible = false;
     scene.add(astro);
-    const astroState = { id: null, G: 0, v0: 0, y: 0, vy: 0, prevVy: 0, s: 1, sq: 0, sqV: 0 };
+    const astroState = {
+      id: null, G: 0, v0: 0, y: 0, vy: 0, prevVy: 0, s: 1, sq: 0, sqV: 0,
+      mode: 'air', groundT: 0, waveT: 0,
+    };
     function setAstronaut(id) {
       const ent = id ? byId[id] : null;
       const g = ent?.data.gravity;
@@ -293,13 +308,19 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
       astroState.prevVy = astroState.v0;
       astroState.sq = 0;
       astroState.sqV = 0;
+      astroState.mode = 'air';
+      astroState.groundT = 0;
+      astroState.waveT = 0;
       astroState.s = THREE.MathUtils.clamp(ent.data.radius * 0.55, 0.5, 1.6);
       astro.scale.setScalar(astroState.s);
       // settle the ragdoll into its rest pose for the new world
+      astroBody.position.y = 0;
       for (const L of astroLimbs) {
-        L.theta = L.rest;
+        L.rest = L.baseRest;
+        L.theta = L.baseRest;
         L.omega = 0;
-        L.group.rotation.z = L.rest;
+        L.group.rotation.set(0, 0, L.baseRest);
+        if (L.knee) L.knee.rotation.x = 0;
       }
       astro.visible = true;
     }
@@ -382,15 +403,33 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
         if (b.moon) b.moon.rotation.y += 1.6 * spd * dt;
       }
 
-      // astronaut bounce: ballistic body + spring-damper ragdoll limbs
+      // astronaut jump cycle: land -> crouch (knees bend) -> push off -> fly
       if (astroState.id) {
-        astroState.vy -= astroState.G * spd * dt;
-        astroState.y += astroState.vy * spd * dt;
-        if (astroState.y <= 0) {
-          astroState.y = 0;
-          astroState.vy = astroState.v0;
-          astroState.sq = -0.3; // landing squash, springs back below
+        const T_CROUCH = 0.24; // seconds spent squatting between bounces
+        let crouch = 0;
+        if (astroState.mode === 'ground') {
+          astroState.groundT += spd * dt;
+          const p = Math.min(astroState.groundT / T_CROUCH, 1);
+          crouch = Math.sin(Math.PI * p); // dip down, then push up
+          if (p >= 1) {
+            astroState.mode = 'air';
+            astroState.vy = astroState.v0; // take-off
+          }
+        } else {
+          astroState.vy -= astroState.G * spd * dt;
+          astroState.y += astroState.vy * spd * dt;
+          if (astroState.y <= 0 && astroState.vy < 0) {
+            astroState.y = 0;
+            astroState.vy = 0;
+            astroState.mode = 'ground';
+            astroState.groundT = 0;
+            astroState.sq = -0.22; // landing squash, springs back below
+          }
         }
+
+        // one arm keeps waving hello (spring target oscillates overhead)
+        astroState.waveT += spd * dt;
+        waveArm.rest = -2.35 + 0.35 * Math.sin(astroState.waveT * 7);
 
         // limbs lag behind the body's vertical acceleration and flail on impact
         const accel = dt > 0 ? (astroState.vy - astroState.prevVy) / dt : 0;
@@ -405,6 +444,14 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
           if (L.theta > L.rest + lim) { L.theta = L.rest + lim; L.omega = 0; }
           if (L.theta < L.rest - lim) { L.theta = L.rest - lim; L.omega = 0; }
           L.group.rotation.z = L.theta;
+        }
+
+        // crouch pose: hips drop, thighs swing forward, knees fold back
+        astroBody.position.y = -0.16 * crouch;
+        for (const L of astroLimbs) {
+          if (!L.knee) continue;
+          L.group.rotation.x = 1.0 * crouch;
+          L.knee.rotation.x = -1.8 * crouch;
         }
 
         // cartoon squash-and-stretch spring on the whole body
