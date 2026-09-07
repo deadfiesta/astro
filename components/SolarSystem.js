@@ -146,6 +146,11 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
     const pickables = [];
     let moonMesh = null;
 
+    // load-in: stars pop first, then planets appear in orbit order,
+    // all inside one second (skipped under reduced motion)
+    const intro = { t: 0, done: reducedMotion };
+    const introFades = []; // orbit-line materials fading up with the intro
+
     // Kuiper Belt: an icy doughnut of frozen chunks past Neptune
     {
       const rnd = mulberry(777);
@@ -206,6 +211,7 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
     const sysLight = new THREE.PointLight('#FFE9B8', 3.4, 400, 0.05);
     sysGroup.add(sysLight);
 
+    let planetIdx = 0;
     for (const b of sys.bodies) {
       const isSun = b.orbit === 0; // the system's star
       const geo = new THREE.SphereGeometry(b.radius, 48, 32);
@@ -273,10 +279,11 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
           const t = (i / 128) * Math.PI * 2;
           pts.push(new THREE.Vector3(Math.cos(t) * b.orbit, 0, Math.sin(t) * b.orbit));
         }
-        orbitParent.add(new THREE.Line(
-          new THREE.BufferGeometry().setFromPoints(pts),
-          new THREE.LineBasicMaterial({ color: b.color, transparent: true, opacity: 0.35 })
-        ));
+        const lineMat = new THREE.LineBasicMaterial({
+          color: b.color, transparent: true, opacity: intro.done ? 0.35 : 0,
+        });
+        introFades.push({ mat: lineMat, target: 0.35 });
+        orbitParent.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), lineMat));
       }
 
       let moon = null;
@@ -311,7 +318,10 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
       }
 
       orbitParent.add(pivot);
-      bodies.push({ data: b, pivot, mesh, moon, angle: Math.random() * Math.PI * 2 });
+      // staggered entrance: star at 0, planets follow in orbit order
+      const delay = isSun ? 0 : 0.12 + planetIdx++ * 0.055;
+      if (!intro.done) pivot.scale.setScalar(0.0001);
+      bodies.push({ data: b, pivot, mesh, moon, delay, angle: Math.random() * Math.PI * 2 });
     }
     }
 
@@ -583,6 +593,26 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
         b.pivot.position.set(Math.cos(b.angle) * d.orbit, 0, Math.sin(b.angle) * d.orbit);
         b.mesh.rotation.y += d.spinSpeed * spd * dt * 2.2;
         if (b.moon) b.moon.rotation.y += 1.6 * spd * dt;
+      }
+
+      // load-in pop: ease-out-back scale per body, orbit lines fade up
+      if (!intro.done) {
+        intro.t += dt;
+        let allDone = true;
+        for (const b of bodies) {
+          const p = THREE.MathUtils.clamp((intro.t - b.delay) / 0.35, 0, 1);
+          if (p < 1) allDone = false;
+          const c = 1.4; // back-ease overshoot for a playful pop
+          const e = p === 0 ? 0 : 1 + (c + 1) * Math.pow(p - 1, 3) + c * Math.pow(p - 1, 2);
+          b.pivot.scale.setScalar(Math.max(0.0001, e));
+        }
+        const fade = Math.min(1, intro.t / 0.9);
+        for (const f of introFades) f.mat.opacity = f.target * fade;
+        if (allDone && fade >= 1) {
+          intro.done = true;
+          for (const b of bodies) b.pivot.scale.setScalar(1);
+          for (const f of introFades) f.mat.opacity = f.target;
+        }
       }
 
       // astronaut: jump cycle, finger-drag, and a natural ballistic fall —
