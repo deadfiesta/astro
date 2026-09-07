@@ -134,6 +134,8 @@ body {
   pointer-events: none;
   transition: opacity 0.25s ease, transform 0.25s ease;
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+  max-height: calc(100dvh - 220px);
+  overflow-y: auto;
 }
 #card.open {
   opacity: 1;
@@ -204,6 +206,77 @@ body {
 }
 #speak:active { transform: scale(0.97); }
 #speak:focus-visible, #card-close:focus-visible { outline: 3px solid var(--ink); outline-offset: 2px; }
+
+/* ---------- "Did you know?" fun-fact carousel ---------- */
+.funfact {
+  background: rgba(255, 201, 60, 0.10);
+  border: 2px dashed rgba(255, 201, 60, 0.55);
+  border-radius: 16px;
+  padding: 10px 12px 8px;
+  margin-bottom: 12px;
+  touch-action: pan-y;
+}
+.funfact-head {
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--sun);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  margin-bottom: 6px;
+}
+.funfact-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.fun-arrow {
+  flex: 0 0 auto;
+  min-width: 44px;
+  min-height: 44px;
+  border-radius: 12px;
+  border: 2px solid rgba(255, 201, 60, 0.45);
+  background: rgba(255, 201, 60, 0.12);
+  color: var(--sun);
+  font-size: 16px;
+  font-family: var(--display);
+  cursor: pointer;
+  transition: transform 0.12s ease, background 0.12s ease;
+}
+.fun-arrow:active { transform: scale(0.88); background: rgba(255, 201, 60, 0.28); }
+.fun-arrow:focus-visible { outline: 3px solid var(--sun); outline-offset: 2px; }
+.funfact-text {
+  flex: 1;
+  margin: 0;
+  min-height: 3em;
+  display: flex;
+  align-items: center;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.45;
+  color: var(--ink);
+  animation: fact-in 0.3s ease;
+}
+@keyframes fact-in {
+  from { opacity: 0; transform: translateX(12px); }
+  to { opacity: 1; transform: none; }
+}
+.fun-dots {
+  display: flex;
+  gap: 6px;
+  justify-content: center;
+  margin-top: 8px;
+}
+.fun-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: rgba(170, 180, 224, 0.35);
+  transition: background 0.15s ease, transform 0.15s ease;
+}
+.fun-dot.active { background: var(--sun); transform: scale(1.25); }
+@media (prefers-reduced-motion: reduce) {
+  .funfact-text { animation: none; }
+}
 
 /* ---------- planet picker ---------- */
 #picker {
