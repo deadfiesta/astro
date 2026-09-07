@@ -639,9 +639,15 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
             const alt = st.pos.length() - surfR;
             if (alt < st.hoverBase + 1.5) {
               st.vel.multiplyScalar(Math.max(0, 1 - 4 * spd * dt));
-              if (st.vel.length() < 0.6) {
+              // buoyancy at the cloud deck: cancel the inward pull, otherwise
+              // gravity feeds speed forever and the leftover sideways motion
+              // slides the astronaut around the planet instead of settling
+              vN.copy(st.pos).normalize();
+              const sinkV = st.vel.dot(vN);
+              if (alt <= st.hoverBase && sinkV < 0) st.vel.addScaledVector(vN, -sinkV);
+              if (st.vel.length() < 0.8) {
                 st.normal.copy(st.pos).normalize();
-                st.h = Math.max(alt, 0.15);
+                st.h = Math.max(alt, 0.1);
                 st.groundT = 0;
                 st.mode = 'hover';
               }
