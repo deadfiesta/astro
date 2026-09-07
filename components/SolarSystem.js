@@ -73,11 +73,13 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
     const controls = new OrbitControls(camera, canvas);
     controls.enableDamping = true;
     controls.dampingFactor = 0.08;
-    controls.enablePan = false;
+    // one finger rotates; two fingers pinch-zoom AND pan around the system
+    controls.enablePan = true;
+    controls.screenSpacePanning = true;
     controls.minDistance = 4;
     controls.maxDistance = 320;
     controls.touches.ONE = THREE.TOUCH.ROTATE;
-    controls.touches.TWO = THREE.TOUCH.DOLLY_ROTATE;
+    controls.touches.TWO = THREE.TOUCH.DOLLY_PAN;
 
     scene.add(new THREE.AmbientLight('#8fa3ff', 0.55));
     // decay 0 = no distance falloff, so outer planets stay as vibrant as inner ones
@@ -543,6 +545,8 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
       }
 
       controls.update();
+      // keep panning within the solar system so nobody gets lost in the dark
+      if (controls.target.length() > 180) controls.target.setLength(180);
       renderer.render(scene, camera);
     }
     animate();
