@@ -6,7 +6,7 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { BODIES } from '@/lib/bodies';
 import {
   makeCanvas, mulberry, rockyTexture, ringTexture, sunTexture, sunGlowTexture,
-  labelSprite, textureFor,
+  labelSprite, textureFor, astronautSprite,
 } from '@/lib/textures';
 
 const HOME_POS = new THREE.Vector3(0, 42, 70);
@@ -37,7 +37,9 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
   useEffect(() => {
     selectedRef.current = selectedId;
     const w = world.current;
-    if (!w || !selectedId) return;
+    if (!w) return;
+    w.setAstronaut(selectedId);
+    if (!selectedId) return;
     if (FEATURE_VIEWS[selectedId]) {
       w.flyTo(FEATURE_VIEWS[selectedId].clone(), HOME_TARGET.clone());
       return;
@@ -263,41 +265,34 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
 
     const byId = Object.fromEntries(bodies.map((x) => [x.data.id, x]));
 
-    // Comet: eccentric tilted orbit from the Kuiper Belt to the inner system.
-    // Ellipse with the Sun at one focus: perihelion a-c = 8, aphelion a+c = 68.
-    const comet = { angle: 0.7, a: 38, c: 30, b: Math.sqrt(38 * 38 - 30 * 30) };
-    const cometOrbit = new THREE.Group();
-    cometOrbit.rotation.set(0.18, 0, 0.12);
-    scene.add(cometOrbit);
-    const cometPivot = new THREE.Group();
-    cometOrbit.add(cometPivot);
-    {
-      const head = new THREE.Mesh(
-        new THREE.SphereGeometry(0.4, 24, 16),
-        new THREE.MeshBasicMaterial({ color: '#EAF8FF' })
-      );
-      head.userData.id = 'comet';
-      pickables.push(head);
-      cometPivot.add(head);
-
-      const label = labelSprite('Comet', '#BFEFFF');
-      label.scale.set(6, 1.5, 1);
-      label.position.y = 1.6;
-      label.userData.id = 'comet';
-      pickables.push(label);
-      cometPivot.add(label);
+    // Bouncing astronaut: same take-off effort everywhere, so jump height and
+    // hang time follow the selected world's real surface gravity (v² = 2gh).
+    const JUMP_V = 3.8; // take-off speed in scene units/s (tuned so Earth ≈ 0.8 high)
+    const astro = astronautSprite();
+    astro.visible = false;
+    scene.add(astro);
+    const astroState = { id: null, G: 0, v0: 0, y: 0, vy: 0, s: 1 };
+    function setAstronaut(id) {
+      const ent = id ? byId[id] : null;
+      const g = ent?.data.gravity;
+      if (!ent || !g) {
+        astro.visible = false;
+        astroState.id = null;
+        return;
+      }
+      const G = 9 * g; // scene-units gravity (Earth = 9)
+      // cap the physical height so low-gravity leaps stay in frame
+      const cap = ent.data.radius * 1.2 + 1.8;
+      const h = Math.max(0.05, Math.min((JUMP_V * JUMP_V) / (2 * G), cap));
+      astroState.id = id;
+      astroState.G = G;
+      astroState.v0 = Math.sqrt(2 * G * h);
+      astroState.y = 0;
+      astroState.vy = astroState.v0;
+      astroState.s = THREE.MathUtils.clamp(ent.data.radius * 0.55, 0.5, 1.6);
+      astro.scale.set(astroState.s, astroState.s, 1);
+      astro.visible = true;
     }
-    const cometTail = new THREE.Mesh(
-      new THREE.ConeGeometry(0.32, 3, 12, 1, true),
-      new THREE.MeshBasicMaterial({
-        color: '#BFEFFF', transparent: true, opacity: 0.45,
-        blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide,
-      })
-    );
-    cometTail.userData.id = 'comet';
-    pickables.push(cometTail);
-    cometPivot.add(cometTail);
-    byId.comet = { data: { id: 'comet', radius: 0.5 }, pivot: cometPivot };
 
     // smooth camera fly (instant under reduced motion)
     let fly = null;
@@ -310,9 +305,10 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
       fly = { fromP: camera.position.clone(), fromT: controls.target.clone(), toP: pos, toT: target, t: 0 };
     }
 
-    world.current = { camera, controls, byId, flyTo, followOffset: new THREE.Vector3() };
+    world.current = { camera, controls, byId, flyTo, setAstronaut, followOffset: new THREE.Vector3() };
     // re-apply the current selection now that the scene exists
     if (selectedRef.current) {
+      setAstronaut(selectedRef.current);
       const d = byId[selectedRef.current]?.data;
       if (d) {
         const dist = Math.max(d.radius * 4.2, 5.5);
@@ -359,7 +355,6 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
     const tmp = new THREE.Vector3();
     const tmp2 = new THREE.Vector3();
     const tmp3 = new THREE.Vector3();
-    const UP = new THREE.Vector3(0, 1, 0);
     let raf;
 
     function animate() {
@@ -375,19 +370,21 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
         if (b.moon) b.moon.rotation.y += 1.6 * spd * dt;
       }
 
-      // comet sweeps faster near the Sun; tail always points away from it
-      {
-        const r = cometPivot.position.length() || 8;
-        comet.angle += spd * dt * 0.3 * Math.min(2.5, 30 / r);
-        cometPivot.position.set(
-          comet.a * Math.cos(comet.angle) - comet.c, 0, comet.b * Math.sin(comet.angle)
+      // astronaut bounce: simple ballistic integration under the world's gravity
+      if (astroState.id) {
+        astroState.vy -= astroState.G * spd * dt;
+        astroState.y += astroState.vy * spd * dt;
+        if (astroState.y <= 0) {
+          astroState.y = 0;
+          astroState.vy = astroState.v0;
+        }
+        const aEnt = byId[astroState.id];
+        aEnt.pivot.getWorldPosition(tmp3);
+        astro.position.set(
+          tmp3.x,
+          tmp3.y + aEnt.data.radius + astroState.s * 0.45 + astroState.y,
+          tmp3.z
         );
-        const dir = tmp2.copy(cometPivot.position).normalize();
-        const len = Math.min(2.4, Math.max(0.7, 30 / cometPivot.position.length()));
-        cometTail.scale.set(len, len, len);
-        // cone apex sits on the comet head, base streams away from the Sun
-        cometTail.position.copy(dir).multiplyScalar((3 * len) / 2 + 0.3);
-        cometTail.quaternion.setFromUnitVectors(UP, tmp3.copy(dir).negate());
       }
 
       // camera follows the selected body (world position — Pluto orbits in a tilted plane)
