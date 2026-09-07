@@ -397,7 +397,7 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
       st.tPush = Math.PI / (2 * st.w2);
       st.groundT = 0;
       st.mode = 'ground';
-      st.sqV -= vIn * 0.8; // squash as a velocity impulse, never a scale jump
+      st.sqV -= Math.min(vIn, 6) * 0.8; // squash impulse, capped for hard slams
     }
 
     // smooth camera fly (instant under reduced motion)
@@ -578,11 +578,15 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
           }
         } else if (st.mode === 'fall') {
           // projectile motion: constant-magnitude gravity toward the core.
+          // Falls span whole scene units (unlike centimeter-scale jumps), so
+          // gravity is amplified here — per-planet ratios stay intact, Pluto
+          // still floats while Jupiter yanks its astronaut straight down.
           // A hard sideways fling can exceed orbital speed (v = sqrt(G*r))
           // and circle forever, so the tangential component is capped below
           // orbit speed and gently decays — every throw ends on the ground.
           vN.copy(st.pos).normalize();
-          st.vel.addScaledVector(vN, -st.G * spd * dt);
+          st.vel.addScaledVector(vN, -st.G * 3.5 * spd * dt);
+          if (st.vel.length() > 30) st.vel.setLength(30);
           const vRad = st.vel.dot(vN);
           vT.copy(st.vel).addScaledVector(vN, -vRad);
           vT.multiplyScalar(Math.max(0, 1 - 0.35 * spd * dt));
@@ -598,7 +602,7 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
             if (-vn > Math.max(st.v0 * 1.05, 1.0)) {
               // bounce: restitution on the normal, friction on the tangent
               st.vel.copy(vT).multiplyScalar(0.7).addScaledVector(vN, -vn * 0.45);
-              st.sqV -= -vn * 0.6;
+              st.sqV -= Math.min(-vn, 6) * 0.6;
             } else {
               // settled — stand right here and rejoin the jump cycle
               st.normal.copy(vN);
