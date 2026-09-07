@@ -67,6 +67,9 @@ export default function Home() {
       </div>
       <FactCard body={body} onClose={deselect} />
       <PlanetPicker selectedId={selectedId} onSelect={select} />
+      <div id="credit">
+        A little passion project by Wen Kiong, making space a little more fun to explore and learn.
+      </div>
     </main>
   );
 }
