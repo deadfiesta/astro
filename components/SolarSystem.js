@@ -341,7 +341,7 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
       struggle: false, tStrain: 0, suspend: false, hoverBase: 1,
       pos: new THREE.Vector3(), vel: new THREE.Vector3(),
       prevVel: new THREE.Vector3(), dragTarget: new THREE.Vector3(),
-      normal: new THREE.Vector3(0, 1, 0),
+      normal: new THREE.Vector3(0, 1, 0), accelSm: new THREE.Vector3(),
     };
     // generous invisible grab handle so fingers can catch the astronaut
     {
@@ -376,6 +376,7 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
       astroState.pos.set(0, ent.data.radius * 0.98, 0);
       astroState.vel.set(0, astroState.v0, 0);
       astroState.prevVel.copy(astroState.vel);
+      astroState.accelSm.set(0, 0, 0);
       astroState.sq = 0;
       astroState.sqV = 0;
       astroState.lean = 0;
@@ -766,20 +767,25 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
           }
         }
 
-        // ragdoll kicks from local-up AND view-plane horizontal acceleration
+        // ragdoll kicks from local-up AND view-plane horizontal acceleration.
+        // Steady acceleration (constant gravity) is filtered out — limbs
+        // react to CHANGES, so strong-gravity worlds don't rail the arms
         tmp.subVectors(st.vel, st.prevVel).divideScalar(Math.max(dt, 1e-4));
         st.prevVel.copy(st.vel);
-        const kickY = THREE.MathUtils.clamp(tmp.dot(vN), -60, 60);
+        st.accelSm.lerp(tmp, Math.min(1, dt * 6));
+        tmp.sub(st.accelSm);
+        const kickY = THREE.MathUtils.clamp(tmp.dot(vN), -40, 40);
         tmp2.set(1, 0, 0).applyQuaternion(camera.quaternion); // camera right
-        const kickH = THREE.MathUtils.clamp(tmp.dot(tmp2), -60, 60);
+        const kickH = THREE.MathUtils.clamp(tmp.dot(tmp2), -40, 40);
         for (const L of astroLimbs) {
-          const drive = (-kickY * 0.35 * L.out + kickH * 0.25) * L.gain;
-          const alpha = -26 * (L.theta - L.rest) - 5 * L.omega + drive;
+          const drive = (-kickY * 0.3 * L.out + kickH * 0.22) * L.gain;
+          const alpha = -26 * (L.theta - L.rest) - 7 * L.omega + drive;
           L.omega += alpha * dt;
           L.theta += L.omega * dt;
+          // soft joint limits: rebound springily instead of freezing dead
           const lim = 1.3;
-          if (L.theta > L.rest + lim) { L.theta = L.rest + lim; L.omega = 0; }
-          if (L.theta < L.rest - lim) { L.theta = L.rest - lim; L.omega = 0; }
+          if (L.theta > L.rest + lim) { L.theta = L.rest + lim; L.omega *= -0.3; }
+          if (L.theta < L.rest - lim) { L.theta = L.rest - lim; L.omega *= -0.3; }
           L.group.rotation.z = L.theta;
 
           // elbows: passive trailing bend from the swing, plus the hello-wave
