@@ -596,17 +596,6 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
         let crouch = 0;
         let bodyDip = 0; // world-units body drop while the knees absorb
 
-        // when standing (or hopping/hovering) the astronaut rides the
-        // planet's spin, staying glued to the surface spot it landed on
-        if (st.mode === 'ground' || st.mode === 'air' || st.mode === 'hover') {
-          const spinDelta = (aEnt.data.spinSpeed || 0) * spd * dt * 2.2;
-          if (spinDelta && aEnt.mesh) {
-            aEnt.mesh.parent.getWorldQuaternion(qTmp);
-            vT.set(0, 1, 0).applyQuaternion(qTmp); // the planet's spin axis
-            st.normal.applyAxisAngle(vT, spinDelta);
-          }
-        }
-
         if (st.mode === 'drag') {
           // the finger asks; gravity resists. The pull behaves like a tether:
           // height above the surface saturates toward a leash length that
@@ -640,7 +629,7 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
           if (st.vel.length() > 30) st.vel.setLength(30);
           const vRad = st.vel.dot(vN);
           vT.copy(st.vel).addScaledVector(vN, -vRad);
-          vT.multiplyScalar(Math.max(0, 1 - 0.35 * spd * dt));
+          vT.multiplyScalar(Math.max(0, 1 - 0.9 * spd * dt));
           const maxT = 0.6 * Math.sqrt(st.G * st.pos.length());
           if (vT.length() > maxT) vT.setLength(maxT);
           st.vel.copy(vT).addScaledVector(vN, vRad);
@@ -664,8 +653,9 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
             const vn = st.vel.dot(vN); // impact speed along the normal
             vT.copy(st.vel).addScaledVector(vN, -vn);
             if (-vn > Math.max(st.v0 * 1.05, 1.0)) {
-              // bounce: restitution on the normal, friction on the tangent
-              st.vel.copy(vT).multiplyScalar(0.7).addScaledVector(vN, -vn * 0.45);
+              // bounce: restitution on the normal, strong friction on the
+              // tangent so it can't skim around the planet before settling
+              st.vel.copy(vT).multiplyScalar(0.35).addScaledVector(vN, -vn * 0.45);
               st.sqV -= Math.min(-vn, 6) * 0.6;
             } else {
               // settled — stand right here and rejoin the jump cycle
