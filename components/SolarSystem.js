@@ -3,7 +3,7 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-import { BODIES, MOON } from '@/lib/bodies';
+import { MOON, SYSTEMS } from '@/lib/bodies';
 import {
   makeCanvas, mulberry, rockyTexture, ringTexture, sunTexture, sunGlowTexture,
   labelSprite, textureFor,
@@ -54,6 +54,9 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
       w.follow.id = null;
       return;
     }
+    // keep the pan clamp anchored to whichever system the body lives in
+    const sys = SYSTEMS.find((s) => s.bodies.some((b) => b.id === selectedId));
+    if (sys) w.sysCenter.set(sys.center[0], sys.center[1], sys.center[2]);
     const dist = Math.max(d.radius * 4.2, 5.5);
     w.followOffset.set(dist * 0.55, dist * 0.5, dist);
     w.follow.id = selectedId;
@@ -63,7 +66,16 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
 
   useImperativeHandle(ref, () => ({
     resetView() {
-      world.current?.flyTo(HOME_POS.clone(), HOME_TARGET.clone());
+      const w = world.current;
+      if (!w) return;
+      w.flyTo(w.sysCenter.clone().add(HOME_POS), w.sysCenter.clone());
+    },
+    goToSystem(center) {
+      const w = world.current;
+      if (!w) return;
+      w.follow.id = null;
+      w.sysCenter.set(center[0], center[1], center[2]);
+      w.flyTo(w.sysCenter.clone().add(HOME_POS), w.sysCenter.clone());
     },
   }), []);
 
@@ -77,7 +89,7 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
     const scene = new THREE.Scene();
     scene.background = new THREE.Color('#070B21');
 
-    const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 600);
+    const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 4000);
     camera.position.copy(HOME_POS);
 
     const controls = new OrbitControls(camera, canvas);
@@ -92,16 +104,16 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
     controls.touches.TWO = THREE.TOUCH.DOLLY_PAN;
 
     scene.add(new THREE.AmbientLight('#8fa3ff', 0.55));
-    // decay 0 = no distance falloff, so outer planets stay as vibrant as inner ones
-    scene.add(new THREE.PointLight('#FFE9B8', 3.0, 0, 0));
+    // each star system gets its own light (near-flat falloff for vibrancy,
+    // with a distance cutoff so systems never light each other)
 
     // starfield
     {
       const rnd = mulberry(2026);
-      const N = 1600;
+      const N = 2800;
       const pos = new Float32Array(N * 3);
       for (let i = 0; i < N; i++) {
-        const r = 180 + rnd() * 220;
+        const r = 900 + rnd() * 1200; // shell wraps all the star systems
         const t = rnd() * Math.PI * 2;
         const p = Math.acos(2 * rnd() - 1);
         pos[i * 3] = r * Math.sin(p) * Math.cos(t);
@@ -187,11 +199,18 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
       scene.add(label);
     }
 
-    for (const b of BODIES) {
-      const isSun = b.id === 'sun';
+    for (const sys of SYSTEMS) {
+    const sysGroup = new THREE.Group();
+    sysGroup.position.set(sys.center[0], sys.center[1], sys.center[2]);
+    scene.add(sysGroup);
+    const sysLight = new THREE.PointLight('#FFE9B8', 3.4, 400, 0.05);
+    sysGroup.add(sysLight);
+
+    for (const b of sys.bodies) {
+      const isSun = b.orbit === 0; // the system's star
       const geo = new THREE.SphereGeometry(b.radius, 48, 32);
       const mat = isSun
-        ? new THREE.MeshBasicMaterial({ map: sunTexture() })
+        ? new THREE.MeshBasicMaterial({ map: sunTexture(b.starColors) })
         : new THREE.MeshLambertMaterial({ map: textureFor(b), color: '#ffffff' });
       const mesh = new THREE.Mesh(geo, mat);
       mesh.userData.id = b.id;
@@ -224,11 +243,11 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
       }
 
       // tilted orbit plane (Pluto) — orbit line and pivot live inside the tilt
-      let orbitParent = scene;
+      let orbitParent = sysGroup;
       if (b.inclination) {
         orbitParent = new THREE.Group();
         orbitParent.rotation.x = b.inclination;
-        scene.add(orbitParent);
+        sysGroup.add(orbitParent);
       }
 
       const pivot = new THREE.Group(); // positioned on the orbit
@@ -243,6 +262,7 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
       if (isSun) {
         const glow = new THREE.Sprite(new THREE.SpriteMaterial({
           map: sunGlowTexture(), transparent: true, depthWrite: false,
+          color: b.glowTint || '#FFFFFF', // tint red for the dwarf stars
         }));
         glow.scale.set(b.radius * 5.2, b.radius * 5.2, 1);
         pivot.add(glow);
@@ -292,6 +312,7 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
 
       orbitParent.add(pivot);
       bodies.push({ data: b, pivot, mesh, moon, angle: Math.random() * Math.PI * 2 });
+    }
     }
 
     const byId = Object.fromEntries(bodies.map((x) => [x.data.id, x]));
@@ -411,7 +432,9 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
         controls.target.copy(target);
         return;
       }
-      fly = { fromP: camera.position.clone(), fromT: controls.target.clone(), toP: pos, toT: target, t: 0 };
+      // long interstellar hops take longer than local flights
+      const dur = THREE.MathUtils.clamp(camera.position.distanceTo(pos) / 300, 1.2, 3.2);
+      fly = { fromP: camera.position.clone(), fromT: controls.target.clone(), toP: pos, toT: target, t: 0, dur };
     }
 
     // follow: approach = camera flies into a nice framing; afterwards it only
@@ -420,7 +443,11 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
     const onControlStart = () => { follow.approach = false; }; // user takes over
     controls.addEventListener('start', onControlStart);
 
-    world.current = { camera, controls, byId, flyTo, setAstronaut, follow, followOffset: new THREE.Vector3() };
+    world.current = {
+      camera, controls, byId, flyTo, setAstronaut, follow,
+      followOffset: new THREE.Vector3(),
+      sysCenter: new THREE.Vector3(), // center of the system being explored
+    };
     // re-apply the current selection now that the scene exists
     if (selectedRef.current) {
       setAstronaut(selectedRef.current);
@@ -789,7 +816,7 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
       }
 
       if (fly) {
-        fly.t += dt / 1.2;
+        fly.t += dt / fly.dur;
         const k = fly.t >= 1 ? 1 : 1 - Math.pow(1 - fly.t, 3);
         camera.position.lerpVectors(fly.fromP, fly.toP, k);
         controls.target.lerpVectors(fly.fromT, fly.toT, k);
@@ -797,8 +824,13 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
       }
 
       controls.update();
-      // keep panning within the solar system so nobody gets lost in the dark
-      if (controls.target.length() > 180) controls.target.setLength(180);
+      // keep free panning within the current system so nobody gets lost
+      if (!follow.id && !fly) {
+        tmp.subVectors(controls.target, world.current.sysCenter);
+        if (tmp.length() > 200) {
+          controls.target.copy(world.current.sysCenter).addScaledVector(tmp.normalize(), 200);
+        }
+      }
       renderer.render(scene, camera);
     }
     animate();

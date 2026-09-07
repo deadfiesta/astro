@@ -338,6 +338,46 @@ body {
 }
 .pname { font-size: 14px; font-weight: 800; letter-spacing: 0.02em; }
 
+/* ---------- star-system navigation ---------- */
+#systems {
+  position: fixed;
+  left: 12px;
+  top: calc(max(10px, env(safe-area-inset-top)) + 74px);
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+#systems-title {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+  padding-left: 4px;
+}
+.sys-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 8px 14px 8px 10px;
+  border-radius: 999px;
+  border: 2px solid rgba(170, 180, 224, 0.3);
+  background: var(--panel);
+  color: var(--ink);
+  font-family: var(--display);
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  transition: transform 0.12s ease, border-color 0.12s ease, background 0.12s ease;
+}
+.sys-btn:active { transform: scale(0.94); }
+.sys-btn.active { border-color: var(--sun); background: rgba(255, 201, 60, 0.16); }
+.sys-btn:focus-visible { outline: 3px solid var(--sun); outline-offset: 2px; }
+.sys-emoji { font-size: 18px; line-height: 1; }
+
 /* ---------- small print ---------- */
 #credit {
   position: fixed;
