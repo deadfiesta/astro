@@ -1,4 +1,4 @@
-# 🪐 Planet Playground
+# 🪐 Little Orbit
 
 An animated, touch-friendly 3D solar system explorer for kids aged 4+. Built with [Next.js](https://nextjs.org) and [Three.js](https://threejs.org).
 

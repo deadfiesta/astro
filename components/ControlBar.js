@@ -9,7 +9,7 @@ const SPEEDS = [
 export default function ControlBar({ speed, paused, onSpeed, onTogglePause, onReset }) {
   return (
     <div className="topbar">
-      <div className="app-title">🚀 Planet Playground</div>
+      <div className="app-title">🚀 Little Orbit</div>
       <div className="controls">
         {SPEEDS.map((s) => (
           <button

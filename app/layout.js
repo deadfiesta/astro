@@ -1,7 +1,7 @@
 import './globals.css';
 
 export const metadata = {
-  title: 'Planet Playground',
+  title: 'Little Orbit',
   description: 'An animated, touch-friendly 3D solar system explorer for kids — tap a planet to watch it orbit and hear a fun fact.',
   icons: {
     // emoji favicon via inline SVG — no asset files needed
