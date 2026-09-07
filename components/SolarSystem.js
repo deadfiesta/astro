@@ -403,7 +403,10 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
       if (dragPointerId === null) return;
       dragPointerId = null;
       controls.enabled = true;
-      if (astroState.id) astroState.mode = 'fall'; // keeps the fling velocity
+      if (astroState.id) {
+        astroState.vel.clampLength(0, 9); // fling, but not into orbit
+        astroState.mode = 'fall';
+      }
     };
 
     const onDown = (e) => {
@@ -517,9 +520,18 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
           }
           st.pos.copy(vP);
         } else if (st.mode === 'fall') {
-          // pure projectile motion: constant-magnitude gravity toward the core
+          // projectile motion: constant-magnitude gravity toward the core.
+          // A hard sideways fling can exceed orbital speed (v = sqrt(G*r))
+          // and circle forever, so the tangential component is capped below
+          // orbit speed and gently decays — every throw ends on the ground.
           vN.copy(st.pos).normalize();
           st.vel.addScaledVector(vN, -st.G * spd * dt);
+          const vRad = st.vel.dot(vN);
+          vT.copy(st.vel).addScaledVector(vN, -vRad);
+          vT.multiplyScalar(Math.max(0, 1 - 0.35 * spd * dt));
+          const maxT = 0.6 * Math.sqrt(st.G * st.pos.length());
+          if (vT.length() > maxT) vT.setLength(maxT);
+          st.vel.copy(vT).addScaledVector(vN, vRad);
           st.pos.addScaledVector(st.vel, spd * dt);
           if (st.pos.length() <= surfR) {
             vN.copy(st.pos).normalize();
