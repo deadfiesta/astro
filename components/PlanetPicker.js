@@ -1,11 +1,13 @@
 'use client';
 
-import { CARDS } from '@/lib/bodies';
+import { BODIES } from '@/lib/bodies';
 
+/* Only the Sun and planets get picker buttons; the Kuiper Belt and Oort
+   Cloud stay reachable by tapping their floating labels in the scene. */
 export default function PlanetPicker({ selectedId, onSelect }) {
   return (
     <div id="picker" aria-label="Pick a planet">
-      {CARDS.map((b) => (
+      {BODIES.map((b) => (
         <button
           key={b.id}
           className={`planet-btn${selectedId === b.id ? ' active' : ''}`}

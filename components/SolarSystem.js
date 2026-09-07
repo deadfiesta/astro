@@ -6,8 +6,9 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { BODIES } from '@/lib/bodies';
 import {
   makeCanvas, mulberry, rockyTexture, ringTexture, sunTexture, sunGlowTexture,
-  labelSprite, textureFor, astronautSprite,
+  labelSprite, textureFor,
 } from '@/lib/textures';
+import { buildAstronaut } from '@/lib/astronaut';
 
 const HOME_POS = new THREE.Vector3(0, 42, 70);
 const HOME_TARGET = new THREE.Vector3(0, 0, 0);
@@ -268,10 +269,10 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
     // Bouncing astronaut: same take-off effort everywhere, so jump height and
     // hang time follow the selected world's real surface gravity (v² = 2gh).
     const JUMP_V = 3.8; // take-off speed in scene units/s (tuned so Earth ≈ 0.8 high)
-    const astro = astronautSprite();
+    const { group: astro, limbs: astroLimbs } = buildAstronaut();
     astro.visible = false;
     scene.add(astro);
-    const astroState = { id: null, G: 0, v0: 0, y: 0, vy: 0, s: 1 };
+    const astroState = { id: null, G: 0, v0: 0, y: 0, vy: 0, prevVy: 0, s: 1, sq: 0, sqV: 0 };
     function setAstronaut(id) {
       const ent = id ? byId[id] : null;
       const g = ent?.data.gravity;
@@ -289,8 +290,17 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
       astroState.v0 = Math.sqrt(2 * G * h);
       astroState.y = 0;
       astroState.vy = astroState.v0;
+      astroState.prevVy = astroState.v0;
+      astroState.sq = 0;
+      astroState.sqV = 0;
       astroState.s = THREE.MathUtils.clamp(ent.data.radius * 0.55, 0.5, 1.6);
-      astro.scale.set(astroState.s, astroState.s, 1);
+      astro.scale.setScalar(astroState.s);
+      // settle the ragdoll into its rest pose for the new world
+      for (const L of astroLimbs) {
+        L.theta = L.rest;
+        L.omega = 0;
+        L.group.rotation.z = L.rest;
+      }
       astro.visible = true;
     }
 
@@ -372,20 +382,48 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
         if (b.moon) b.moon.rotation.y += 1.6 * spd * dt;
       }
 
-      // astronaut bounce: simple ballistic integration under the world's gravity
+      // astronaut bounce: ballistic body + spring-damper ragdoll limbs
       if (astroState.id) {
         astroState.vy -= astroState.G * spd * dt;
         astroState.y += astroState.vy * spd * dt;
         if (astroState.y <= 0) {
           astroState.y = 0;
           astroState.vy = astroState.v0;
+          astroState.sq = -0.3; // landing squash, springs back below
         }
+
+        // limbs lag behind the body's vertical acceleration and flail on impact
+        const accel = dt > 0 ? (astroState.vy - astroState.prevVy) / dt : 0;
+        astroState.prevVy = astroState.vy;
+        const kick = THREE.MathUtils.clamp(accel, -60, 60);
+        for (const L of astroLimbs) {
+          const drive = -kick * 0.35 * L.out * L.gain;
+          const alpha = -26 * (L.theta - L.rest) - 5 * L.omega + drive;
+          L.omega += alpha * dt;
+          L.theta += L.omega * dt;
+          const lim = 1.3;
+          if (L.theta > L.rest + lim) { L.theta = L.rest + lim; L.omega = 0; }
+          if (L.theta < L.rest - lim) { L.theta = L.rest - lim; L.omega = 0; }
+          L.group.rotation.z = L.theta;
+        }
+
+        // cartoon squash-and-stretch spring on the whole body
+        astroState.sqV += (-180 * astroState.sq - 14 * astroState.sqV) * dt;
+        astroState.sq += astroState.sqV * dt;
+        const s = astroState.s;
+        astro.scale.set(s * (1 - astroState.sq * 0.6), s * (1 + astroState.sq), s * (1 - astroState.sq * 0.6));
+
         const aEnt = byId[astroState.id];
         aEnt.pivot.getWorldPosition(tmp3);
         astro.position.set(
           tmp3.x,
-          tmp3.y + aEnt.data.radius + astroState.s * 0.45 + astroState.y,
+          tmp3.y + aEnt.data.radius * 0.98 + astroState.y,
           tmp3.z
+        );
+        // billboard: keep the visor facing the camera
+        astro.rotation.y = Math.atan2(
+          camera.position.x - astro.position.x,
+          camera.position.z - astro.position.z
         );
       }
 
