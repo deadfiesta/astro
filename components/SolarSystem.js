@@ -452,10 +452,10 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
 
         astroState.waveT += spd * dt;
         // waving arm: overhead wave, blending to a horizontal wing when floating
-        const waveTarget = -2.35 + 0.35 * Math.sin(astroState.waveT * 7);
-        waveArm.rest = THREE.MathUtils.lerp(waveTarget, -1.75, spread);
+        const waveTarget = 2.35 + 0.35 * Math.sin(astroState.waveT * 7);
+        waveArm.rest = THREE.MathUtils.lerp(waveTarget, 1.75, spread);
         // free arm: loads through the crouch, flings up and out when floating
-        swingArm.rest = THREE.MathUtils.lerp(swingArm.baseRest + 1.1 * crouch, 1.75, spread);
+        swingArm.rest = THREE.MathUtils.lerp(swingArm.baseRest - 1.1 * crouch, -1.75, spread);
         // legs: drift into a star shape at a floaty apex
         for (const L of astroLimbs) {
           if (L.knee) L.rest = THREE.MathUtils.lerp(L.baseRest, L.out * 0.55, spread);
