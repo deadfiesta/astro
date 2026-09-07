@@ -40,15 +40,25 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
     const w = world.current;
     if (!w) return;
     w.setAstronaut(selectedId);
-    if (!selectedId) return;
+    if (!selectedId) {
+      w.follow.id = null;
+      return;
+    }
     if (FEATURE_VIEWS[selectedId]) {
+      w.follow.id = null;
       w.flyTo(FEATURE_VIEWS[selectedId].clone(), HOME_TARGET.clone());
       return;
     }
     const d = w.byId[selectedId]?.data;
-    if (!d) return;
+    if (!d) {
+      w.follow.id = null;
+      return;
+    }
     const dist = Math.max(d.radius * 4.2, 5.5);
     w.followOffset.set(dist * 0.55, dist * 0.5, dist);
+    w.follow.id = selectedId;
+    w.follow.approach = true;
+    w.follow.timer = 0;
   }, [selectedId]);
 
   useImperativeHandle(ref, () => ({
@@ -306,6 +316,7 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
     const astroState = {
       id: null, G: 0, v0: 0, s: 1, sq: 0, sqV: 0,
       mode: 'air', groundT: 0, waveT: 0, h: 0, hv: 0, lean: 0,
+      crouchDepth: 1, crouchT: 0.28,
       pos: new THREE.Vector3(), vel: new THREE.Vector3(),
       prevVel: new THREE.Vector3(), dragTarget: new THREE.Vector3(),
       normal: new THREE.Vector3(0, 1, 0),
@@ -343,6 +354,8 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
       astroState.sq = 0;
       astroState.sqV = 0;
       astroState.lean = 0;
+      astroState.crouchDepth = 1;
+      astroState.crouchT = 0.28;
       astroState.mode = 'air';
       astroState.groundT = 0;
       astroState.waveT = 0;
@@ -372,7 +385,13 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
       fly = { fromP: camera.position.clone(), fromT: controls.target.clone(), toP: pos, toT: target, t: 0 };
     }
 
-    world.current = { camera, controls, byId, flyTo, setAstronaut, followOffset: new THREE.Vector3() };
+    // follow: approach = camera flies into a nice framing; afterwards it only
+    // rides along with the planet's motion so the user can orbit it freely
+    const follow = { id: null, approach: false, timer: 0, prev: new THREE.Vector3() };
+    const onControlStart = () => { follow.approach = false; }; // user takes over
+    controls.addEventListener('start', onControlStart);
+
+    world.current = { camera, controls, byId, flyTo, setAstronaut, follow, followOffset: new THREE.Vector3() };
     // re-apply the current selection now that the scene exists
     if (selectedRef.current) {
       setAstronaut(selectedRef.current);
@@ -380,6 +399,9 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
       if (d) {
         const dist = Math.max(d.radius * 4.2, 5.5);
         world.current.followOffset.set(dist * 0.55, dist * 0.5, dist);
+        follow.id = selectedRef.current;
+        follow.approach = true;
+        follow.timer = 0;
       }
     }
 
@@ -505,7 +527,6 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
         aEnt.pivot.getWorldPosition(tmp3); // planet center (world)
         const surfR = aEnt.data.radius * 0.98;
 
-        const T_CROUCH = 0.24; // seconds spent squatting between bounces
         let crouch = 0;
 
         if (st.mode === 'drag') {
@@ -544,19 +565,25 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
               st.sq = -0.28;
             } else {
               // settled — stand right here and rejoin the jump cycle
+              const impact = -vn / Math.max(st.v0, 0.001);
+              st.crouchDepth = THREE.MathUtils.clamp(0.55 + 0.45 * impact, 0.55, 1.35);
+              st.crouchT = 0.2 + 0.12 * st.crouchDepth;
               st.normal.copy(vN);
               st.vel.set(0, 0, 0);
               st.h = 0;
               st.hv = 0;
               st.mode = 'ground';
               st.groundT = 0;
-              st.sq = -0.2;
+              st.sq = -0.1 - 0.08 * st.crouchDepth;
             }
           }
         } else if (st.mode === 'ground') {
           st.groundT += spd * dt;
-          const p = Math.min(st.groundT / T_CROUCH, 1);
-          crouch = Math.sin(Math.PI * p); // dip down, then push up
+          const p = Math.min(st.groundT / st.crouchT, 1);
+          // smoothstep-eased sine: zero slope at touchdown and take-off,
+          // so the dip flows out of the landing instead of snapping
+          const e = p * p * (3 - 2 * p);
+          crouch = st.crouchDepth * Math.sin(Math.PI * e);
           if (p >= 1) {
             st.mode = 'air';
             st.hv = st.v0; // take-off along the local up
@@ -568,11 +595,15 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
           st.hv -= st.G * spd * dt;
           st.h += st.hv * spd * dt;
           if (st.h <= 0 && st.hv < 0) {
+            // harder impacts crouch deeper and take longer to absorb
+            const impact = -st.hv / Math.max(st.v0, 0.001);
+            st.crouchDepth = THREE.MathUtils.clamp(0.55 + 0.45 * impact, 0.55, 1.35);
+            st.crouchT = 0.2 + 0.12 * st.crouchDepth;
             st.h = 0;
             st.hv = 0;
             st.mode = 'ground';
             st.groundT = 0;
-            st.sq = -0.22; // landing squash, springs back below
+            st.sq = -0.1 - 0.08 * st.crouchDepth; // softer squash — knees absorb it
           }
           st.pos.copy(st.normal).multiplyScalar(surfR + st.h);
           st.vel.copy(st.normal).multiplyScalar(st.hv);
@@ -666,25 +697,37 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
         astro.quaternion.multiply(qTmp.setFromAxisAngle(Z_AXIS, st.lean));
       }
 
-      // camera follows the selected body (world position — Pluto orbits in a tilted plane)
-      const sel = selectedRef.current;
-      const ent = sel ? byId[sel] : null;
-      if (ent && !fly) {
+      // camera follow: the approach flies into a framing that keeps the body
+      // clear of the fact card; after that the camera only translates with
+      // the planet, so rotating/zooming/panning around it stays free
+      const ent = follow.id && !fly ? byId[follow.id] : null;
+      if (ent) {
         ent.pivot.getWorldPosition(tmp2);
-        tmp.copy(tmp2).add(world.current.followOffset);
-        camera.position.lerp(tmp, reducedMotion ? 1 : 0.06);
-        // frame the body off-center so the fact card never covers it:
-        // aim past the body — to its right on wide screens (card docks right),
-        // below it on phones (card is a bottom sheet)
-        const camDist = camera.position.distanceTo(tmp2);
-        const halfH = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * camDist;
-        if (view.side) {
-          tmp3.subVectors(tmp2, camera.position).normalize().cross(camera.up).normalize();
-          tmp2.addScaledVector(tmp3, halfH * camera.aspect * 0.30);
+        if (follow.approach) {
+          follow.timer += dt;
+          tmp.copy(tmp2).add(world.current.followOffset);
+          camera.position.lerp(tmp, reducedMotion ? 1 : 0.06);
+          follow.prev.copy(tmp2);
+          // aim past the body — to its right on wide screens (card docks
+          // right), below it on phones (card is a bottom sheet)
+          const camDist = camera.position.distanceTo(tmp2);
+          const halfH = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * camDist;
+          if (view.side) {
+            tmp3.subVectors(tmp2, camera.position).normalize().cross(camera.up).normalize();
+            tmp2.addScaledVector(tmp3, halfH * camera.aspect * 0.30);
+          } else {
+            tmp2.addScaledVector(camera.up, -halfH * 0.30);
+          }
+          controls.target.lerp(tmp2, reducedMotion ? 1 : 0.12);
+          if (reducedMotion || follow.timer > 2.5 || camera.position.distanceTo(tmp) < 0.3) {
+            follow.approach = false; // arrived — rotation belongs to the user now
+          }
         } else {
-          tmp2.addScaledVector(camera.up, -halfH * 0.30);
+          tmp.subVectors(tmp2, follow.prev);
+          camera.position.add(tmp);
+          controls.target.add(tmp);
+          follow.prev.copy(tmp2);
         }
-        controls.target.lerp(tmp2, reducedMotion ? 1 : 0.12);
       }
 
       if (fly) {
@@ -709,6 +752,7 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
       canvas.removeEventListener('pointermove', onMove);
       canvas.removeEventListener('pointerup', onUp);
       canvas.removeEventListener('pointercancel', onUp);
+      controls.removeEventListener('start', onControlStart);
       controls.dispose();
       scene.traverse((obj) => {
         obj.geometry?.dispose?.();
