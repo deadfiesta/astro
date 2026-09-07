@@ -545,16 +545,25 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
         let bodyDip = 0; // world-units body drop while the knees absorb
 
         if (st.mode === 'drag') {
-          // the finger leads; measured velocity feeds the ragdoll and the fling
+          // the finger asks; gravity resists. The pull behaves like a tether:
+          // height above the surface saturates toward a leash length that
+          // shrinks with surface gravity (Earth = 9 → ~6 units). The heaviest
+          // worlds clamp to a short leash — held close, but never pinned.
           vP.set(st.dragTarget.x - tmp3.x, st.dragTarget.y - tmp3.y, st.dragTarget.z - tmp3.z);
-          const maxR = surfR + 12;
-          if (vP.length() > maxR) vP.setLength(maxR);
-          if (vP.length() < surfR + 0.01) vP.setLength(surfR + 0.01); // not inside the planet
+          const want = Math.max(vP.length() - surfR, 0.01);
+          const leash = THREE.MathUtils.clamp(54 / st.G, 1.6, 12);
+          const got = leash * (1 - Math.exp(-want / leash));
+          vP.setLength(surfR + 0.01 + got);
+          // chase the resisted point with gravity-scaled lag — the trailing
+          // motion reads as friction, heaviest worlds tug back the hardest
+          const rate = THREE.MathUtils.clamp(16 / (1 + st.G / 9), 3, 14);
+          const chase = 1 - Math.exp(-rate * dt);
+          tmp2.copy(st.pos);
+          st.pos.lerp(vP, chase);
           if (dt > 0) {
-            tmp2.subVectors(vP, st.pos).divideScalar(dt);
+            tmp2.subVectors(st.pos, tmp2).divideScalar(dt);
             st.vel.lerp(tmp2, 0.5);
           }
-          st.pos.copy(vP);
         } else if (st.mode === 'fall') {
           // projectile motion: constant-magnitude gravity toward the core.
           // A hard sideways fling can exceed orbital speed (v = sqrt(G*r))
