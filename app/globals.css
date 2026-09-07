@@ -1,0 +1,251 @@
+/* Single-theme by design: this is outer space, it is dark everywhere.
+   Every color is painted explicitly so the page holds on any host ground. */
+:root {
+  --space: #070B21;
+  --space-2: #0D1330;
+  --panel: rgba(16, 22, 52, 0.88);
+  --ink: #F4F6FF;
+  --ink-dim: #AAB4E0;
+  --sun: #FFC93C;
+  --sun-deep: #FF9F1C;
+  --radius: 22px;
+  --display: ui-rounded, "SF Pro Rounded", "Arial Rounded MT Bold", "Hiragino Maru Gothic ProN", system-ui, sans-serif;
+}
+* {
+  -webkit-tap-highlight-color: transparent;
+  box-sizing: border-box;
+}
+html, body { height: 100%; }
+body {
+  margin: 0;
+  background: var(--space);
+  color: var(--ink);
+  font-family: var(--display);
+  overflow: hidden;
+  overscroll-behavior: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+#space {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  touch-action: none;
+}
+
+/* ---------- top bar ---------- */
+.topbar {
+  position: fixed;
+  top: max(10px, env(safe-area-inset-top));
+  left: 12px;
+  right: 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  pointer-events: none;
+  z-index: 5;
+}
+.app-title {
+  pointer-events: auto;
+  font-size: clamp(18px, 3.4vw, 26px);
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  padding: 10px 16px;
+  border-radius: 999px;
+  background: var(--panel);
+  border: 2px solid rgba(255, 201, 60, 0.45);
+  color: var(--sun);
+  text-shadow: 0 2px 8px rgba(255, 159, 28, 0.35);
+  white-space: nowrap;
+}
+.controls {
+  pointer-events: auto;
+  margin-left: auto;
+  display: flex;
+  gap: 8px;
+}
+.ctl {
+  min-width: 56px;
+  min-height: 56px;
+  border-radius: 18px;
+  border: 2px solid rgba(170, 180, 224, 0.35);
+  background: var(--panel);
+  color: var(--ink);
+  font-size: 26px;
+  font-family: var(--display);
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  transition: transform 0.12s ease, border-color 0.12s ease, background 0.12s ease;
+}
+.ctl:active { transform: scale(0.92); }
+.ctl.active {
+  border-color: var(--sun);
+  background: rgba(255, 201, 60, 0.18);
+}
+.ctl:focus-visible { outline: 3px solid var(--sun); outline-offset: 2px; }
+
+/* ---------- tap hint ---------- */
+#hint {
+  position: fixed;
+  left: 50%;
+  top: 22%;
+  transform: translateX(-50%);
+  z-index: 4;
+  background: var(--panel);
+  border: 2px solid rgba(255, 201, 60, 0.5);
+  border-radius: 999px;
+  padding: 12px 22px;
+  font-size: clamp(17px, 3vw, 22px);
+  font-weight: 700;
+  color: var(--ink);
+  pointer-events: none;
+  animation: bob 2.4s ease-in-out infinite;
+  transition: opacity 0.6s ease;
+}
+#hint.soft { opacity: 0.55; }
+#hint.hidden { opacity: 0; }
+@keyframes bob {
+  0%, 100% { transform: translateX(-50%) translateY(0); }
+  50% { transform: translateX(-50%) translateY(-8px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  #hint { animation: none; }
+  .ctl, .planet-btn { transition: none; }
+}
+
+/* ---------- fact card ---------- */
+#card {
+  position: fixed;
+  left: 50%;
+  bottom: calc(112px + env(safe-area-inset-bottom));
+  transform: translateX(-50%) translateY(24px);
+  width: min(480px, calc(100vw - 24px));
+  background: var(--panel);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 3px solid var(--planet-color, var(--sun));
+  border-radius: var(--radius);
+  padding: 18px 20px 16px;
+  z-index: 6;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.25s ease, transform 0.25s ease;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+}
+#card.open {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateX(-50%) translateY(0);
+}
+.card-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+#card-emoji { font-size: 40px; line-height: 1; }
+#card-name {
+  font-size: clamp(24px, 5vw, 32px);
+  font-weight: 800;
+  margin: 0;
+  letter-spacing: 0.01em;
+  text-wrap: balance;
+}
+#card-close {
+  margin-left: auto;
+  min-width: 48px;
+  min-height: 48px;
+  border-radius: 14px;
+  border: 2px solid rgba(170, 180, 224, 0.35);
+  background: rgba(170, 180, 224, 0.12);
+  color: var(--ink);
+  font-size: 22px;
+  cursor: pointer;
+}
+#card-close:active { transform: scale(0.9); }
+#card-fact {
+  font-size: clamp(16px, 3.2vw, 19px);
+  line-height: 1.5;
+  margin: 10px 0 12px;
+  color: var(--ink);
+  max-width: 60ch;
+}
+#card-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.chip {
+  background: rgba(170, 180, 224, 0.12);
+  border: 1.5px solid rgba(170, 180, 224, 0.25);
+  border-radius: 14px;
+  padding: 8px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.chip-label { font-size: 12px; color: var(--ink-dim); font-weight: 700; letter-spacing: 0.04em; }
+.chip-value { font-size: 15px; font-weight: 700; }
+#speak {
+  width: 100%;
+  min-height: 56px;
+  border-radius: 16px;
+  border: none;
+  background: linear-gradient(180deg, var(--sun), var(--sun-deep));
+  color: #3A2500;
+  font-family: var(--display);
+  font-size: 19px;
+  font-weight: 800;
+  cursor: pointer;
+  transition: transform 0.12s ease;
+}
+#speak:active { transform: scale(0.97); }
+#speak:focus-visible, #card-close:focus-visible { outline: 3px solid var(--ink); outline-offset: 2px; }
+
+/* ---------- planet picker ---------- */
+#picker {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 5;
+  display: flex;
+  gap: 10px;
+  padding: 10px 14px calc(12px + env(safe-area-inset-bottom));
+  overflow-x: auto;
+  scrollbar-width: none;
+  background: linear-gradient(180deg, rgba(7, 11, 33, 0), rgba(7, 11, 33, 0.92) 40%);
+  -webkit-overflow-scrolling: touch;
+}
+#picker::-webkit-scrollbar { display: none; }
+.planet-btn {
+  flex: 0 0 auto;
+  min-width: 76px;
+  min-height: 76px;
+  border-radius: 20px;
+  border: 2.5px solid rgba(170, 180, 224, 0.25);
+  background: var(--space-2);
+  color: var(--ink);
+  font-family: var(--display);
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 10px;
+  transition: transform 0.12s ease, border-color 0.12s ease;
+}
+.planet-btn:active { transform: scale(0.92); }
+.planet-btn.active { border-color: var(--sun); background: rgba(255, 201, 60, 0.14); }
+.planet-btn:focus-visible { outline: 3px solid var(--sun); outline-offset: 2px; }
+.dot {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  display: block;
+}
+.pname { font-size: 14px; font-weight: 800; letter-spacing: 0.02em; }
