@@ -316,7 +316,7 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
     const astroState = {
       id: null, G: 0, v0: 0, s: 1, sq: 0, sqV: 0,
       mode: 'air', groundT: 0, waveT: 0, h: 0, hv: 0, lean: 0,
-      crouchDepth: 1, crouchT: 0.28,
+      dW: 0.16, w1: 13, w2: 13, tAbs: 0.12, tPush: 0.12,
       pos: new THREE.Vector3(), vel: new THREE.Vector3(),
       prevVel: new THREE.Vector3(), dragTarget: new THREE.Vector3(),
       normal: new THREE.Vector3(0, 1, 0),
@@ -354,8 +354,6 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
       astroState.sq = 0;
       astroState.sqV = 0;
       astroState.lean = 0;
-      astroState.crouchDepth = 1;
-      astroState.crouchT = 0.28;
       astroState.mode = 'air';
       astroState.groundT = 0;
       astroState.waveT = 0;
@@ -372,6 +370,22 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
         if (L.elbow) L.elbow.rotation.z = 0;
       }
       astro.visible = true;
+    }
+    // set up the ground phase as a harmonic absorb-and-push: the body keeps
+    // moving down at the impact speed while the knees decelerate it (quarter
+    // sine), then accelerates back up, leaving the ground at push velocity —
+    // position and velocity stay continuous at touchdown AND take-off
+    function landAstronaut(vIn) {
+      const st = astroState;
+      const vOut = st.v0;
+      st.dW = THREE.MathUtils.clamp(Math.max(vIn, vOut) / 13, 0.04, 0.3);
+      st.w1 = THREE.MathUtils.clamp(vIn / st.dW, 6, 20);
+      st.w2 = THREE.MathUtils.clamp(vOut / st.dW, 6, 20);
+      st.tAbs = Math.PI / (2 * st.w1);
+      st.tPush = Math.PI / (2 * st.w2);
+      st.groundT = 0;
+      st.mode = 'ground';
+      st.sqV -= vIn * 0.8; // squash as a velocity impulse, never a scale jump
     }
 
     // smooth camera fly (instant under reduced motion)
@@ -528,6 +542,7 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
         const surfR = aEnt.data.radius * 0.98;
 
         let crouch = 0;
+        let bodyDip = 0; // world-units body drop while the knees absorb
 
         if (st.mode === 'drag') {
           // the finger leads; measured velocity feeds the ragdoll and the fling
@@ -562,48 +577,48 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
             if (-vn > Math.max(st.v0 * 1.05, 1.0)) {
               // bounce: restitution on the normal, friction on the tangent
               st.vel.copy(vT).multiplyScalar(0.7).addScaledVector(vN, -vn * 0.45);
-              st.sq = -0.28;
+              st.sqV -= -vn * 0.6;
             } else {
               // settled — stand right here and rejoin the jump cycle
-              const impact = -vn / Math.max(st.v0, 0.001);
-              st.crouchDepth = THREE.MathUtils.clamp(0.55 + 0.45 * impact, 0.55, 1.35);
-              st.crouchT = 0.2 + 0.12 * st.crouchDepth;
               st.normal.copy(vN);
               st.vel.set(0, 0, 0);
               st.h = 0;
               st.hv = 0;
-              st.mode = 'ground';
-              st.groundT = 0;
-              st.sq = -0.1 - 0.08 * st.crouchDepth;
+              landAstronaut(-vn);
             }
           }
         } else if (st.mode === 'ground') {
           st.groundT += spd * dt;
-          const p = Math.min(st.groundT / st.crouchT, 1);
-          // smoothstep-eased sine: zero slope at touchdown and take-off,
-          // so the dip flows out of the landing instead of snapping
-          const e = p * p * (3 - 2 * p);
-          crouch = st.crouchDepth * Math.sin(Math.PI * e);
-          if (p >= 1) {
+          const t = st.groundT;
+          let b, bv;
+          if (t < st.tAbs) {
+            // absorb: body still falling at impact speed, knees decelerate it
+            b = -st.dW * Math.sin(st.w1 * t);
+            bv = -st.dW * st.w1 * Math.cos(st.w1 * t);
+          } else if (t < st.tAbs + st.tPush) {
+            // push: accelerate up out of the deepest point of the crouch
+            const tau = t - st.tAbs;
+            b = -st.dW * Math.cos(st.w2 * tau);
+            bv = st.dW * st.w2 * Math.sin(st.w2 * tau);
+          } else {
+            b = 0;
+            bv = st.dW * st.w2;
             st.mode = 'air';
-            st.hv = st.v0; // take-off along the local up
+            st.hv = bv; // take-off at exactly the push velocity — no snap
           }
+          crouch = Math.min(1, -b / st.dW);
+          bodyDip = b;
           st.pos.copy(st.normal).multiplyScalar(surfR);
-          st.vel.set(0, 0, 0);
+          st.vel.copy(st.normal).multiplyScalar(bv); // ragdoll sees smooth motion
         } else {
           // jump cycle hops along the surface normal of the standing spot
           st.hv -= st.G * spd * dt;
           st.h += st.hv * spd * dt;
           if (st.h <= 0 && st.hv < 0) {
-            // harder impacts crouch deeper and take longer to absorb
-            const impact = -st.hv / Math.max(st.v0, 0.001);
-            st.crouchDepth = THREE.MathUtils.clamp(0.55 + 0.45 * impact, 0.55, 1.35);
-            st.crouchT = 0.2 + 0.12 * st.crouchDepth;
+            const vIn = -st.hv;
             st.h = 0;
             st.hv = 0;
-            st.mode = 'ground';
-            st.groundT = 0;
-            st.sq = -0.1 - 0.08 * st.crouchDepth; // softer squash — knees absorb it
+            landAstronaut(vIn);
           }
           st.pos.copy(st.normal).multiplyScalar(surfR + st.h);
           st.vel.copy(st.normal).multiplyScalar(st.hv);
@@ -667,8 +682,9 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
           }
         }
 
-        // crouch pose: hips drop, thighs swing forward, knees fold back
-        astroBody.position.y = -0.16 * crouch;
+        // crouch pose: hips drop by the real absorb distance (converted to
+        // the astronaut's local scale), thighs swing forward, knees fold back
+        astroBody.position.y = Math.max(bodyDip / st.s, -0.3);
         for (const L of astroLimbs) {
           if (!L.knee) continue;
           L.group.rotation.x = 1.0 * crouch;
