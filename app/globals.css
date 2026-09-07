@@ -134,13 +134,28 @@ body {
   pointer-events: none;
   transition: opacity 0.25s ease, transform 0.25s ease;
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
-  max-height: calc(100dvh - 220px);
+  max-height: min(48dvh, calc(100dvh - 220px));
   overflow-y: auto;
 }
 #card.open {
   opacity: 1;
   pointer-events: auto;
   transform: translateX(-50%) translateY(0);
+}
+/* wider screens: dock the card to the right so the planet stays visible on the left */
+@media (min-width: 700px) {
+  #card {
+    left: auto;
+    right: 16px;
+    bottom: auto;
+    top: 50%;
+    width: min(400px, 42vw);
+    max-height: calc(100dvh - 140px);
+    transform: translateY(-50%) translateX(24px);
+  }
+  #card.open {
+    transform: translateY(-50%) translateX(0);
+  }
 }
 .card-head {
   display: flex;

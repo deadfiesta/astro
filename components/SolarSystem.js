@@ -340,12 +340,14 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
     canvas.addEventListener('pointerdown', onDown);
     canvas.addEventListener('pointerup', onUp);
 
-    // sizing
+    // sizing; also decides where the fact card docks (side vs bottom sheet)
+    const view = { side: false };
     function fit() {
       const w = canvas.clientWidth, h = canvas.clientHeight;
       renderer.setSize(w, h, false);
       camera.aspect = w / h;
       camera.updateProjectionMatrix();
+      view.side = window.matchMedia('(min-width: 700px)').matches;
     }
     fit();
     window.addEventListener('resize', fit);
@@ -394,6 +396,17 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
         ent.pivot.getWorldPosition(tmp2);
         tmp.copy(tmp2).add(world.current.followOffset);
         camera.position.lerp(tmp, reducedMotion ? 1 : 0.06);
+        // frame the body off-center so the fact card never covers it:
+        // aim past the body — to its right on wide screens (card docks right),
+        // below it on phones (card is a bottom sheet)
+        const camDist = camera.position.distanceTo(tmp2);
+        const halfH = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * camDist;
+        if (view.side) {
+          tmp3.subVectors(tmp2, camera.position).normalize().cross(camera.up).normalize();
+          tmp2.addScaledVector(tmp3, halfH * camera.aspect * 0.30);
+        } else {
+          tmp2.addScaledVector(camera.up, -halfH * 0.30);
+        }
         controls.target.lerp(tmp2, reducedMotion ? 1 : 0.12);
       }
 
