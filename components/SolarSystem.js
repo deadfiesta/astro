@@ -299,14 +299,16 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
     const { group: astro, body: astroBody, limbs: astroLimbs, swingArm, waveArm } = buildAstronaut();
     astro.visible = false;
     scene.add(astro);
-    // off/vel are the astronaut's offset+velocity relative to the planet-top
-    // anchor. mode: air/ground = jump cycle, drag = held by a finger,
-    // fall = released and dropping back to the surface
+    // pos/vel are relative to the planet's center. normal is the surface
+    // point the astronaut stands on (it jumps along that local "up").
+    // mode: air/ground = jump cycle, drag = held by a finger,
+    // fall = released — ballistic under gravity toward the planet's core
     const astroState = {
       id: null, G: 0, v0: 0, s: 1, sq: 0, sqV: 0,
-      mode: 'air', groundT: 0, waveT: 0,
-      off: new THREE.Vector3(), vel: new THREE.Vector3(),
+      mode: 'air', groundT: 0, waveT: 0, h: 0, hv: 0, lean: 0,
+      pos: new THREE.Vector3(), vel: new THREE.Vector3(),
       prevVel: new THREE.Vector3(), dragTarget: new THREE.Vector3(),
+      normal: new THREE.Vector3(0, 1, 0),
     };
     // generous invisible grab handle so fingers can catch the astronaut
     {
@@ -332,13 +334,16 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
       astroState.id = id;
       astroState.G = G;
       astroState.v0 = Math.sqrt(2 * G * h);
-      astroState.off.set(0, 0, 0);
+      astroState.normal.set(0, 1, 0);
+      astroState.h = 0;
+      astroState.hv = astroState.v0;
+      astroState.pos.set(0, ent.data.radius * 0.98, 0);
       astroState.vel.set(0, astroState.v0, 0);
       astroState.prevVel.copy(astroState.vel);
       astroState.sq = 0;
       astroState.sqV = 0;
+      astroState.lean = 0;
       astroState.mode = 'air';
-      astro.rotation.z = 0;
       astroState.groundT = 0;
       astroState.waveT = 0;
       astroState.s = THREE.MathUtils.clamp(ent.data.radius * 0.55, 0.5, 1.6);
@@ -464,6 +469,15 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
     const tmp = new THREE.Vector3();
     const tmp2 = new THREE.Vector3();
     const tmp3 = new THREE.Vector3();
+    // scratch objects for the astronaut's spherical-surface physics
+    const vN = new THREE.Vector3(); // local up (surface normal)
+    const vT = new THREE.Vector3(); // tangential velocity
+    const vF = new THREE.Vector3(); // facing (toward camera)
+    const vR = new THREE.Vector3(); // local right
+    const vP = new THREE.Vector3();
+    const m4 = new THREE.Matrix4();
+    const qTmp = new THREE.Quaternion();
+    const Z_AXIS = new THREE.Vector3(0, 0, 1);
     let raf;
 
     function animate() {
@@ -479,45 +493,50 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
         if (b.moon) b.moon.rotation.y += 1.6 * spd * dt;
       }
 
-      // astronaut: jump cycle, finger-drag, and fall-back-and-bounce
+      // astronaut: jump cycle, finger-drag, and a natural ballistic fall —
+      // gravity points at the planet's core, landings happen wherever the
+      // arc meets the sphere, and bounces reflect off the surface normal
       if (astroState.id) {
         const st = astroState;
         const aEnt = byId[st.id];
-        aEnt.pivot.getWorldPosition(tmp3);
-        const anchorX = tmp3.x;
-        const anchorY = tmp3.y + aEnt.data.radius * 0.98;
-        const anchorZ = tmp3.z;
+        aEnt.pivot.getWorldPosition(tmp3); // planet center (world)
+        const surfR = aEnt.data.radius * 0.98;
 
         const T_CROUCH = 0.24; // seconds spent squatting between bounces
         let crouch = 0;
 
         if (st.mode === 'drag') {
           // the finger leads; measured velocity feeds the ragdoll and the fling
-          tmp.set(st.dragTarget.x - anchorX, st.dragTarget.y - anchorY, st.dragTarget.z - anchorZ);
-          if (tmp.length() > 14) tmp.setLength(14);
-          if (tmp.y < 0) tmp.y = 0; // can't push below the surface
+          vP.set(st.dragTarget.x - tmp3.x, st.dragTarget.y - tmp3.y, st.dragTarget.z - tmp3.z);
+          const maxR = surfR + 12;
+          if (vP.length() > maxR) vP.setLength(maxR);
+          if (vP.length() < surfR + 0.01) vP.setLength(surfR + 0.01); // not inside the planet
           if (dt > 0) {
-            tmp2.subVectors(tmp, st.off).divideScalar(dt);
+            tmp2.subVectors(vP, st.pos).divideScalar(dt);
             st.vel.lerp(tmp2, 0.5);
           }
-          st.off.copy(tmp);
+          st.pos.copy(vP);
         } else if (st.mode === 'fall') {
-          st.vel.y -= st.G * spd * dt;
-          // gentle homing pulls any drift back over the planet's top
-          st.vel.x += (-6 * st.off.x - 2 * st.vel.x) * spd * dt;
-          st.vel.z += (-6 * st.off.z - 2 * st.vel.z) * spd * dt;
-          st.off.addScaledVector(st.vel, spd * dt);
-          if (st.off.y <= 0 && st.vel.y < 0) {
-            st.off.y = 0;
-            if (-st.vel.y > Math.max(st.v0 * 1.05, 1.0)) {
-              st.vel.y = -st.vel.y * 0.45; // bounce with damping
-              st.vel.x *= 0.6;
-              st.vel.z *= 0.6;
+          // pure projectile motion: constant-magnitude gravity toward the core
+          vN.copy(st.pos).normalize();
+          st.vel.addScaledVector(vN, -st.G * spd * dt);
+          st.pos.addScaledVector(st.vel, spd * dt);
+          if (st.pos.length() <= surfR) {
+            vN.copy(st.pos).normalize();
+            st.pos.copy(vN).multiplyScalar(surfR);
+            const vn = st.vel.dot(vN); // impact speed along the normal
+            vT.copy(st.vel).addScaledVector(vN, -vn);
+            if (-vn > Math.max(st.v0 * 1.05, 1.0)) {
+              // bounce: restitution on the normal, friction on the tangent
+              st.vel.copy(vT).multiplyScalar(0.7).addScaledVector(vN, -vn * 0.45);
               st.sq = -0.28;
             } else {
-              st.off.set(0, 0, 0);
+              // settled — stand right here and rejoin the jump cycle
+              st.normal.copy(vN);
               st.vel.set(0, 0, 0);
-              st.mode = 'ground'; // settled — rejoin the jump cycle
+              st.h = 0;
+              st.hv = 0;
+              st.mode = 'ground';
               st.groundT = 0;
               st.sq = -0.2;
             }
@@ -528,28 +547,34 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
           crouch = Math.sin(Math.PI * p); // dip down, then push up
           if (p >= 1) {
             st.mode = 'air';
-            st.vel.y = st.v0; // take-off
+            st.hv = st.v0; // take-off along the local up
           }
+          st.pos.copy(st.normal).multiplyScalar(surfR);
+          st.vel.set(0, 0, 0);
         } else {
-          st.vel.y -= st.G * spd * dt;
-          st.off.y += st.vel.y * spd * dt;
-          if (st.off.y <= 0 && st.vel.y < 0) {
-            st.off.y = 0;
-            st.vel.y = 0;
+          // jump cycle hops along the surface normal of the standing spot
+          st.hv -= st.G * spd * dt;
+          st.h += st.hv * spd * dt;
+          if (st.h <= 0 && st.hv < 0) {
+            st.h = 0;
+            st.hv = 0;
             st.mode = 'ground';
             st.groundT = 0;
             st.sq = -0.22; // landing squash, springs back below
           }
+          st.pos.copy(st.normal).multiplyScalar(surfR + st.h);
+          st.vel.copy(st.normal).multiplyScalar(st.hv);
         }
 
         const held = st.mode === 'drag' || st.mode === 'fall';
+        vN.copy(st.pos).normalize(); // local up wherever the astronaut is
 
         // low-gravity worlds: near the apex the astronaut spreads out like
         // they're trying to fly. floatiness: 0 at >=0.6g, 1 as g approaches 0
         const floatiness = THREE.MathUtils.clamp(1 - st.G / 9 / 0.6, 0, 1);
         let spread = 0;
         if (!held && st.mode === 'air' && st.v0 > 0) {
-          const apex = 1 - Math.min(1, Math.abs(st.vel.y) / st.v0);
+          const apex = 1 - Math.min(1, Math.abs(st.hv) / st.v0);
           spread = floatiness * apex * apex; // eases in toward the top
         }
 
@@ -573,10 +598,10 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
           }
         }
 
-        // ragdoll kicks from vertical AND view-plane horizontal acceleration
+        // ragdoll kicks from local-up AND view-plane horizontal acceleration
         tmp.subVectors(st.vel, st.prevVel).divideScalar(Math.max(dt, 1e-4));
         st.prevVel.copy(st.vel);
-        const kickY = THREE.MathUtils.clamp(tmp.y, -60, 60);
+        const kickY = THREE.MathUtils.clamp(tmp.dot(vN), -60, 60);
         tmp2.set(1, 0, 0).applyQuaternion(camera.quaternion); // camera right
         const kickH = THREE.MathUtils.clamp(tmp.dot(tmp2), -60, 60);
         for (const L of astroLimbs) {
@@ -613,15 +638,20 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
         const s = st.s;
         astro.scale.set(s * (1 - st.sq * 0.6), s * (1 + st.sq), s * (1 - st.sq * 0.6));
 
-        astro.position.set(anchorX + st.off.x, anchorY + st.off.y, anchorZ + st.off.z);
-        // billboard: keep the visor facing the camera
-        astro.rotation.y = Math.atan2(
-          camera.position.x - astro.position.x,
-          camera.position.z - astro.position.z
-        );
+        astro.position.set(tmp3.x + st.pos.x, tmp3.y + st.pos.y, tmp3.z + st.pos.z);
+
+        // stand along the local up (surface normal), visor toward the camera
+        vF.subVectors(camera.position, astro.position);
+        vF.addScaledVector(vN, -vF.dot(vN)); // project into the tangent plane
+        if (vF.lengthSq() < 1e-6) vF.set(vN.y, vN.z, vN.x).cross(vN); // degenerate view
+        vF.normalize();
+        vR.crossVectors(vN, vF); // right-handed basis: right, up, front
+        m4.makeBasis(vR, vN, vF);
+        astro.quaternion.setFromRotationMatrix(m4);
         // lean into sideways motion while held or flung, upright otherwise
-        const lean = held ? THREE.MathUtils.clamp(-st.vel.dot(tmp2) * 0.045, -0.5, 0.5) : 0;
-        astro.rotation.z += (lean - astro.rotation.z) * Math.min(1, dt * 8);
+        const leanTarget = held ? THREE.MathUtils.clamp(-st.vel.dot(vR) * 0.045, -0.5, 0.5) : 0;
+        st.lean += (leanTarget - st.lean) * Math.min(1, dt * 8);
+        astro.quaternion.multiply(qTmp.setFromAxisAngle(Z_AXIS, st.lean));
       }
 
       // camera follows the selected body (world position — Pluto orbits in a tilted plane)
