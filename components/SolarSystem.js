@@ -352,6 +352,7 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
       pos: new THREE.Vector3(), vel: new THREE.Vector3(),
       prevVel: new THREE.Vector3(), dragTarget: new THREE.Vector3(),
       normal: new THREE.Vector3(0, 1, 0), accelSm: new THREE.Vector3(),
+      transitFrom: new THREE.Vector3(), transitT: 0, transitDur: 1,
     };
     // generous invisible grab handle so fingers can catch the astronaut
     {
@@ -404,10 +405,7 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
       astroState.v0 = Math.sqrt(2 * G * h);
       astroState.normal.set(0, 1, 0);
       astroState.h = 0;
-      astroState.hv = astroState.v0;
-      astroState.pos.set(0, ent.data.radius * 0.98, 0);
-      astroState.vel.set(0, astroState.v0, 0);
-      astroState.prevVel.copy(astroState.vel);
+      astroState.hv = 0;
       astroState.accelSm.set(0, 0, 0);
       astroState.sq = 0;
       astroState.sqV = 0;
@@ -415,19 +413,32 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
       // extreme gravity (>~11g — the Sun): jumps become failed attempts
       astroState.struggle = G > 100;
       astroState.tStrain = 0;
-      astroState.mode = 'air';
       // standing on a star means standing IN fire
       astroState.burning = ent.data.orbit === 0;
       // gas worlds have no surface: the astronaut floats in the thick gas
       astroState.suspend = !!ent.data.gas;
       astroState.hoverBase = 0.12 + ent.data.radius * 0.05;
-      if (astroState.suspend) {
-        astroState.mode = 'hover';
-        astroState.h = astroState.hoverBase;
-        astroState.groundT = 0;
+
+      // entrance: fly over from the previous world when close enough,
+      // otherwise dive in from high above. Cruise speed scales with the
+      // destination's gravity, and 'fall' handles the landing itself —
+      // bounce on rock, air-brake into a hover on gas, struggle on stars.
+      ent.pivot.getWorldPosition(vP);
+      const fromDist = astro.visible ? astro.position.distanceTo(vP) : Infinity;
+      if (fromDist < 220) {
+        astroState.mode = 'transit';
+        astroState.transitFrom.copy(astro.position);
+        astroState.transitT = 0;
+        const cruise = 22 * THREE.MathUtils.clamp(Math.sqrt(G / 9), 0.7, 2);
+        astroState.transitDur = THREE.MathUtils.clamp(fromDist / cruise, 0.45, 1.8);
+        astroState.pos.subVectors(astro.position, vP);
         astroState.vel.set(0, 0, 0);
-        astroState.prevVel.set(0, 0, 0);
+      } else {
+        astroState.mode = 'fall';
+        astroState.pos.set(0, ent.data.radius * 0.98 + 8, 0);
+        astroState.vel.set(0, -1.5, 0);
       }
+      astroState.prevVel.copy(astroState.vel);
       astroState.groundT = 0;
       astroState.waveT = 0;
       astroState.s = THREE.MathUtils.clamp(ent.data.radius * 0.55, 0.5, 1.6);
@@ -651,7 +662,27 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
         let crouch = 0;
         let bodyDip = 0; // world-units body drop while the knees absorb
 
-        if (st.mode === 'drag') {
+        if (st.mode === 'transit') {
+          // flying over from the previous world: smooth arc toward a point
+          // above the new planet, then hand the landing to the fall physics
+          st.transitT += (spd * dt) / st.transitDur;
+          const k = Math.min(st.transitT, 1);
+          const e = k * k * (3 - 2 * k);
+          vP.set(tmp3.x, tmp3.y + surfR + 3.2, tmp3.z); // approach point (world)
+          tmp.lerpVectors(st.transitFrom, vP, e);
+          tmp.y += Math.sin(Math.PI * e) * 4; // arc up and over
+          tmp2.set(tmp.x - tmp3.x, tmp.y - tmp3.y, tmp.z - tmp3.z);
+          if (dt > 0) {
+            vT.subVectors(tmp2, st.pos).divideScalar(dt);
+            st.vel.lerp(vT, 0.5);
+          }
+          st.pos.copy(tmp2);
+          if (k >= 1) {
+            st.mode = 'fall';
+            st.normal.set(0, 1, 0);
+            st.vel.multiplyScalar(0.3); // bleed cruise speed; gravity takes over
+          }
+        } else if (st.mode === 'drag') {
           // the finger asks; gravity resists. The pull behaves like a tether:
           // height above the surface saturates toward a leash length that
           // shrinks with surface gravity (Earth = 9 → ~6 units). The heaviest
@@ -790,6 +821,7 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
           // floating in the gas: arms drift out into a relaxed swimming pose
           spread = 0.55 + 0.12 * Math.sin(st.groundT * 1.5);
         }
+        if (st.mode === 'transit') spread = 0.8; // wings out while flying over
 
         if (held) {
           // held or falling: all posing stops — pure limp ragdoll dangling
@@ -798,7 +830,7 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
           for (const L of astroLimbs) {
             if (L.knee) L.rest = L.baseRest;
           }
-        } else if (st.struggle) {
+        } else if (st.struggle && st.mode !== 'transit') {
           // no cheery wave here: arms brace outward and shake with effort,
           // hardest at the bottom of the crouch
           st.waveT += spd * dt;
