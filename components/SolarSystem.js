@@ -352,7 +352,6 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
       pos: new THREE.Vector3(), vel: new THREE.Vector3(),
       prevVel: new THREE.Vector3(), dragTarget: new THREE.Vector3(),
       normal: new THREE.Vector3(0, 1, 0), accelSm: new THREE.Vector3(),
-      transitFrom: new THREE.Vector3(), transitT: 0, transitDur: 1,
     };
     // generous invisible grab handle so fingers can catch the astronaut
     {
@@ -419,20 +418,12 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
       astroState.suspend = !!ent.data.gas;
       astroState.hoverBase = 0.12 + ent.data.radius * 0.05;
 
-      // entrance: a quick swoop in from the top corner of the view, then
-      // 'fall' handles the landing itself — bounce on rock, air-brake into
-      // a hover on gas, struggle on stars.
-      ent.pivot.getWorldPosition(vP);
-      vN.set(1, 0, 0).applyQuaternion(camera.quaternion); // camera right
-      vT.set(0, 1, 0).applyQuaternion(camera.quaternion); // camera up
-      astroState.mode = 'transit';
-      astroState.transitFrom.copy(vP)
-        .addScaledVector(vN, ent.data.radius + 5)
-        .addScaledVector(vT, ent.data.radius + 6);
-      astroState.transitT = 0;
-      astroState.transitDur = 0.5;
-      astroState.pos.subVectors(astroState.transitFrom, vP);
-      astroState.vel.set(0, 0, 0);
+      // entrance: drop straight in from above the planet — 'fall' handles
+      // the landing itself: knee-absorb bounce on rock, buoyant settle on
+      // gas, ignite and struggle on stars.
+      astroState.mode = 'fall';
+      astroState.pos.set(0, ent.data.radius * 0.98 + 5, 0);
+      astroState.vel.set(0, -1, 0);
       astroState.prevVel.copy(astroState.vel);
       astroState.groundT = 0;
       astroState.waveT = 0;
@@ -657,27 +648,7 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
         let crouch = 0;
         let bodyDip = 0; // world-units body drop while the knees absorb
 
-        if (st.mode === 'transit') {
-          // quick swoop from the top corner toward a point above the planet,
-          // then hand the landing to the fall physics
-          st.transitT += (spd * dt) / st.transitDur;
-          const k = Math.min(st.transitT, 1);
-          const e = k * k * (3 - 2 * k);
-          vP.set(tmp3.x, tmp3.y + surfR + 2.2, tmp3.z); // approach point (world)
-          tmp.lerpVectors(st.transitFrom, vP, e);
-          tmp.y += Math.sin(Math.PI * e) * 1; // gentle swoop curve
-          tmp2.set(tmp.x - tmp3.x, tmp.y - tmp3.y, tmp.z - tmp3.z);
-          if (dt > 0) {
-            vT.subVectors(tmp2, st.pos).divideScalar(dt);
-            st.vel.lerp(vT, 0.5);
-          }
-          st.pos.copy(tmp2);
-          if (k >= 1) {
-            st.mode = 'fall';
-            st.normal.set(0, 1, 0);
-            st.vel.multiplyScalar(0.3); // bleed cruise speed; gravity takes over
-          }
-        } else if (st.mode === 'drag') {
+        if (st.mode === 'drag') {
           // the finger asks; gravity resists. The pull behaves like a tether:
           // height above the surface saturates toward a leash length that
           // shrinks with surface gravity (Earth = 9 → ~6 units). The heaviest
@@ -716,30 +687,32 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
           st.vel.copy(vT).addScaledVector(vN, vRad);
           st.pos.addScaledVector(st.vel, spd * dt);
           if (st.suspend) {
-            // no surface to hit — the thick gas brakes the fall into a float
+            // no surface to hit — the gas brakes the sideways drift, then the
+            // buoyancy spring in hover soaks up the vertical motion naturally
             const alt = st.pos.length() - surfR;
             if (alt < st.hoverBase + 1.5) {
-              st.vel.multiplyScalar(Math.max(0, 1 - 4 * spd * dt));
-              // buoyancy at the cloud deck: cancel the inward pull, otherwise
-              // gravity feeds speed forever and the leftover sideways motion
-              // slides the astronaut around the planet instead of settling
               vN.copy(st.pos).normalize();
               const sinkV = st.vel.dot(vN);
-              if (alt <= st.hoverBase && sinkV < 0) st.vel.addScaledVector(vN, -sinkV);
-              if (st.vel.length() < 0.8) {
-                st.normal.copy(st.pos).normalize();
-                st.h = Math.max(alt, 0.1);
+              vT.copy(st.vel).addScaledVector(vN, -sinkV);
+              vT.multiplyScalar(Math.max(0, 1 - 4 * spd * dt));
+              st.vel.copy(vT).addScaledVector(vN, sinkV);
+              if (vT.length() < 0.6 && alt <= st.hoverBase + 0.5) {
+                st.normal.copy(vN);
+                st.h = Math.max(alt, 0.06);
+                st.hv = THREE.MathUtils.clamp(sinkV, -4, 4); // carry the plunge
                 st.groundT = 0;
                 st.mode = 'hover';
               }
             }
-            if (st.pos.length() < surfR + 0.1) st.pos.setLength(surfR + 0.1);
+            if (st.pos.length() < surfR + 0.06) st.pos.setLength(surfR + 0.06);
           } else if (st.pos.length() <= surfR) {
             vN.copy(st.pos).normalize();
             st.pos.copy(vN).multiplyScalar(surfR);
             const vn = st.vel.dot(vN); // impact speed along the normal
             vT.copy(st.vel).addScaledVector(vN, -vn);
-            if (-vn > Math.max(st.v0 * 1.05, 1.0)) {
+            // only truly hard slams reflect; ordinary landings go straight to
+            // the knee-bend absorb, which scales its depth with impact speed
+            if (-vn > Math.max(st.v0 * 3, 4)) {
               // bounce: restitution on the normal, strong friction on the
               // tangent so it can't skim around the planet before settling
               st.vel.copy(vT).multiplyScalar(0.35).addScaledVector(vN, -vn * 0.45);
@@ -754,12 +727,15 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
             }
           }
         } else if (st.mode === 'hover') {
-          // suspended in the gas — no landing, just a slow buoyant bob
+          // suspended in the gas: an underdamped buoyancy spring, so arrivals
+          // sink into the clouds, bob back up, and settle into the ambient float
           st.groundT += spd * dt;
           const target = st.hoverBase + 0.1 * Math.sin(st.groundT * 1.2);
-          st.h += (target - st.h) * Math.min(1, dt * 2);
+          st.hv += (-(st.h - target) * 6 - st.hv * 1.7) * spd * dt;
+          st.h += st.hv * spd * dt;
+          if (st.h < 0.05) { st.h = 0.05; st.hv = Math.abs(st.hv) * 0.5; }
           st.pos.copy(st.normal).multiplyScalar(surfR + st.h);
-          st.vel.copy(st.normal).multiplyScalar(0.3 * Math.cos(st.groundT * 1.2));
+          st.vel.copy(st.normal).multiplyScalar(st.hv);
         } else if (st.mode === 'ground') {
           st.groundT += spd * dt;
           const t = st.groundT;
@@ -816,7 +792,6 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
           // floating in the gas: arms drift out into a relaxed swimming pose
           spread = 0.55 + 0.12 * Math.sin(st.groundT * 1.5);
         }
-        if (st.mode === 'transit') spread = 0.8; // wings out while flying over
 
         if (held) {
           // held or falling: all posing stops — pure limp ragdoll dangling
@@ -825,7 +800,7 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
           for (const L of astroLimbs) {
             if (L.knee) L.rest = L.baseRest;
           }
-        } else if (st.struggle && st.mode !== 'transit') {
+        } else if (st.struggle) {
           // no cheery wave here: arms brace outward and shake with effort,
           // hardest at the bottom of the crouch
           st.waveT += spd * dt;
