@@ -419,25 +419,20 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
       astroState.suspend = !!ent.data.gas;
       astroState.hoverBase = 0.12 + ent.data.radius * 0.05;
 
-      // entrance: fly over from the previous world when close enough,
-      // otherwise dive in from high above. Cruise speed scales with the
-      // destination's gravity, and 'fall' handles the landing itself —
-      // bounce on rock, air-brake into a hover on gas, struggle on stars.
+      // entrance: a quick swoop in from the top corner of the view, then
+      // 'fall' handles the landing itself — bounce on rock, air-brake into
+      // a hover on gas, struggle on stars.
       ent.pivot.getWorldPosition(vP);
-      const fromDist = astro.visible ? astro.position.distanceTo(vP) : Infinity;
-      if (fromDist < 220) {
-        astroState.mode = 'transit';
-        astroState.transitFrom.copy(astro.position);
-        astroState.transitT = 0;
-        const cruise = 22 * THREE.MathUtils.clamp(Math.sqrt(G / 9), 0.7, 2);
-        astroState.transitDur = THREE.MathUtils.clamp(fromDist / cruise, 0.45, 1.8);
-        astroState.pos.subVectors(astro.position, vP);
-        astroState.vel.set(0, 0, 0);
-      } else {
-        astroState.mode = 'fall';
-        astroState.pos.set(0, ent.data.radius * 0.98 + 8, 0);
-        astroState.vel.set(0, -1.5, 0);
-      }
+      vN.set(1, 0, 0).applyQuaternion(camera.quaternion); // camera right
+      vT.set(0, 1, 0).applyQuaternion(camera.quaternion); // camera up
+      astroState.mode = 'transit';
+      astroState.transitFrom.copy(vP)
+        .addScaledVector(vN, ent.data.radius + 5)
+        .addScaledVector(vT, ent.data.radius + 6);
+      astroState.transitT = 0;
+      astroState.transitDur = 0.5;
+      astroState.pos.subVectors(astroState.transitFrom, vP);
+      astroState.vel.set(0, 0, 0);
       astroState.prevVel.copy(astroState.vel);
       astroState.groundT = 0;
       astroState.waveT = 0;
@@ -663,14 +658,14 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
         let bodyDip = 0; // world-units body drop while the knees absorb
 
         if (st.mode === 'transit') {
-          // flying over from the previous world: smooth arc toward a point
-          // above the new planet, then hand the landing to the fall physics
+          // quick swoop from the top corner toward a point above the planet,
+          // then hand the landing to the fall physics
           st.transitT += (spd * dt) / st.transitDur;
           const k = Math.min(st.transitT, 1);
           const e = k * k * (3 - 2 * k);
-          vP.set(tmp3.x, tmp3.y + surfR + 3.2, tmp3.z); // approach point (world)
+          vP.set(tmp3.x, tmp3.y + surfR + 2.2, tmp3.z); // approach point (world)
           tmp.lerpVectors(st.transitFrom, vP, e);
-          tmp.y += Math.sin(Math.PI * e) * 4; // arc up and over
+          tmp.y += Math.sin(Math.PI * e) * 1; // gentle swoop curve
           tmp2.set(tmp.x - tmp3.x, tmp.y - tmp3.y, tmp.z - tmp3.z);
           if (dt > 0) {
             vT.subVectors(tmp2, st.pos).divideScalar(dt);
