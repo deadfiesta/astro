@@ -448,9 +448,12 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
     function landAstronaut(vIn) {
       const st = astroState;
       const vOut = st.v0;
-      st.dW = THREE.MathUtils.clamp(Math.max(vIn, vOut) / 13, 0.04, 0.3);
-      st.w1 = THREE.MathUtils.clamp(vIn / st.dW, 6, 20);
-      st.w2 = THREE.MathUtils.clamp(vOut / st.dW, 6, 20);
+      // depth capped so the body dip never hits the render clamp (which used
+      // to freeze the crouch mid-absorb on small worlds), and the absorb rate
+      // capped lower so hard hits sink in visibly instead of blinking
+      st.dW = THREE.MathUtils.clamp(Math.max(vIn, vOut) / 13, 0.04, Math.min(0.3, 0.28 * st.s));
+      st.w1 = THREE.MathUtils.clamp(vIn / st.dW, 6, 14);
+      st.w2 = THREE.MathUtils.clamp(vOut / st.dW, 6, 16);
       st.tAbs = Math.PI / (2 * st.w1);
       if (st.struggle) {
         // the push is far too slow to reach take-off speed: a long, trembling
@@ -463,7 +466,7 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
       st.tPush = Math.PI / (2 * st.w2);
       st.groundT = 0;
       st.mode = 'ground';
-      st.sqV -= Math.min(vIn, 6) * 0.8; // squash impulse, capped for hard slams
+      st.sqV -= Math.min(vIn, 6) * 0.45; // gentle squash — the knees do the absorbing
     }
 
     // smooth camera fly (instant under reduced motion)
@@ -685,6 +688,7 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
           const maxT = 0.6 * Math.sqrt(st.G * st.pos.length());
           if (vT.length() > maxT) vT.setLength(maxT);
           st.vel.copy(vT).addScaledVector(vN, vRad);
+          vP.copy(st.pos); // pre-step position, for exact impact placement
           st.pos.addScaledVector(st.vel, spd * dt);
           if (st.suspend) {
             // no surface to hit — the gas brakes the sideways drift, then the
@@ -706,6 +710,13 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
             }
             if (st.pos.length() < surfR + 0.06) st.pos.setLength(surfR + 0.06);
           } else if (st.pos.length() <= surfR) {
+            // land exactly where the path crossed the surface — a fast fall
+            // can tunnel deep in one frame, and snapping back up reads as a pop
+            const above = vP.length() - surfR;
+            const below = surfR - st.pos.length();
+            if (above > 0 && above + below > 0) {
+              st.pos.lerpVectors(vP, st.pos, above / (above + below));
+            }
             vN.copy(st.pos).normalize();
             st.pos.copy(vN).multiplyScalar(surfR);
             const vn = st.vel.dot(vN); // impact speed along the normal
@@ -716,7 +727,7 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
               // bounce: restitution on the normal, strong friction on the
               // tangent so it can't skim around the planet before settling
               st.vel.copy(vT).multiplyScalar(0.35).addScaledVector(vN, -vn * 0.45);
-              st.sqV -= Math.min(-vn, 6) * 0.6;
+              st.sqV -= Math.min(-vn, 6) * 0.4;
             } else {
               // settled — stand right here and rejoin the jump cycle
               st.normal.copy(vN);
