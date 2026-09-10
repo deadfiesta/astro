@@ -681,7 +681,9 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
           // orbit speed and gently decays — every throw ends on the ground.
           vN.copy(st.pos).normalize();
           st.vel.addScaledVector(vN, -st.G * 3.5 * spd * dt);
-          if (st.vel.length() > 30) st.vel.setLength(30);
+          // gas worlds cap much lower: a 30 u/s fall can tunnel toward the
+          // core in one frame, where the radial/tangential split goes haywire
+          if (st.vel.length() > (st.suspend ? 12 : 30)) st.vel.setLength(st.suspend ? 12 : 30);
           const vRad = st.vel.dot(vN);
           vT.copy(st.vel).addScaledVector(vN, -vRad);
           vT.multiplyScalar(Math.max(0, 1 - 0.9 * spd * dt));
@@ -691,8 +693,17 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
           vP.copy(st.pos); // pre-step position, for exact impact placement
           st.pos.addScaledVector(st.vel, spd * dt);
           if (st.suspend) {
-            // no surface to hit — the gas brakes the sideways drift, then the
-            // buoyancy spring in hover soaks up the vertical motion naturally
+            // buoyant floor FIRST: pin to the cloud deck and cancel inward
+            // speed there, so gravity can't keep the velocity saturated and
+            // the leftover slide can't circle the planet
+            if (st.pos.length() < surfR + 0.06) {
+              st.pos.setLength(surfR + 0.06);
+              vN.copy(st.pos).normalize();
+              const sink = st.vel.dot(vN);
+              if (sink < 0) st.vel.addScaledVector(vN, -sink);
+            }
+            // then the gas brakes the sideways drift; the buoyancy spring in
+            // hover soaks up whatever vertical motion remains
             const alt = st.pos.length() - surfR;
             if (alt < st.hoverBase + 1.5) {
               vN.copy(st.pos).normalize();
@@ -708,7 +719,6 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
                 st.mode = 'hover';
               }
             }
-            if (st.pos.length() < surfR + 0.06) st.pos.setLength(surfR + 0.06);
           } else if (st.pos.length() <= surfR) {
             // land exactly where the path crossed the surface — a fast fall
             // can tunnel deep in one frame, and snapping back up reads as a pop
