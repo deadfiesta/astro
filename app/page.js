@@ -44,7 +44,7 @@ export default function Home() {
     setSelectedId(null);
     setSystemId(sys.id);
     setEverSelected(true);
-    sceneRef.current?.goToSystem(sys.center);
+    sceneRef.current?.goToSystem(sys);
   }, []);
 
   const deselect = useCallback(() => {

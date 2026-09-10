@@ -13,6 +13,16 @@ import { buildAstronaut } from '@/lib/astronaut';
 const HOME_POS = new THREE.Vector3(0, 42, 70);
 const HOME_TARGET = new THREE.Vector3(0, 0, 0);
 
+// overview offset scaled to a system's size, so compact systems like
+// TRAPPIST-1 fill the frame instead of looking like specks from Sol range
+function systemViewOffset(sys) {
+  const extent = sys.id === 'sol'
+    ? 62 // out to the Kuiper Belt
+    : Math.max(...sys.bodies.map((b) => b.orbit + b.radius));
+  const k = THREE.MathUtils.clamp((extent + 8) / 70, 0.28, 1);
+  return HOME_POS.clone().multiplyScalar(k);
+}
+
 // belt/cloud selections fly to a fixed viewpoint instead of following a body
 const FEATURE_VIEWS = {
   kuiper: new THREE.Vector3(0, 45, 98),
@@ -54,9 +64,12 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
       w.follow.id = null;
       return;
     }
-    // keep the pan clamp anchored to whichever system the body lives in
+    // keep the pan clamp and reset framing anchored to the body's system
     const sys = SYSTEMS.find((s) => s.bodies.some((b) => b.id === selectedId));
-    if (sys) w.sysCenter.set(sys.center[0], sys.center[1], sys.center[2]);
+    if (sys) {
+      w.sysCenter.set(sys.center[0], sys.center[1], sys.center[2]);
+      w.homeOffset.copy(systemViewOffset(sys));
+    }
     const dist = Math.max(d.radius * 4.2, 5.5);
     w.followOffset.set(dist * 0.55, dist * 0.5, dist);
     w.follow.id = selectedId;
@@ -68,14 +81,15 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
     resetView() {
       const w = world.current;
       if (!w) return;
-      w.flyTo(w.sysCenter.clone().add(HOME_POS), w.sysCenter.clone());
+      w.flyTo(w.sysCenter.clone().add(w.homeOffset), w.sysCenter.clone());
     },
-    goToSystem(center) {
+    goToSystem(sys) {
       const w = world.current;
       if (!w) return;
       w.follow.id = null;
-      w.sysCenter.set(center[0], center[1], center[2]);
-      w.flyTo(w.sysCenter.clone().add(HOME_POS), w.sysCenter.clone());
+      w.sysCenter.set(sys.center[0], sys.center[1], sys.center[2]);
+      w.homeOffset.copy(systemViewOffset(sys));
+      w.flyTo(w.sysCenter.clone().add(w.homeOffset), w.sysCenter.clone());
     },
   }), []);
 
@@ -492,6 +506,7 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
       camera, controls, byId, flyTo, setAstronaut, follow,
       followOffset: new THREE.Vector3(),
       sysCenter: new THREE.Vector3(), // center of the system being explored
+      homeOffset: HOME_POS.clone(), // overview offset sized to that system
     };
     // re-apply the current selection now that the scene exists
     if (selectedRef.current) {
