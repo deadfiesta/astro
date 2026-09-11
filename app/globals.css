@@ -373,6 +373,47 @@ body {
   }
 }
 
+/* ---------- system arrival banner ---------- */
+#sys-banner {
+  position: fixed;
+  left: 50%;
+  top: calc(max(10px, env(safe-area-inset-top)) + 84px);
+  transform: translateX(-50%) translateY(-8px);
+  z-index: 4;
+  max-width: min(520px, calc(100vw - 24px));
+  background: var(--panel);
+  border: 2px solid rgba(255, 201, 60, 0.45);
+  border-radius: 18px;
+  padding: 10px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  text-align: center;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.5s ease, transform 0.5s ease;
+}
+#sys-banner.show {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+.sys-banner-name {
+  font-size: 16px;
+  font-weight: 800;
+  color: var(--sun);
+  letter-spacing: 0.02em;
+}
+.sys-banner-desc {
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--ink);
+}
+@media (max-width: 699px) {
+  /* below the horizontal system row on phones */
+  #sys-banner { top: calc(max(10px, env(safe-area-inset-top)) + 134px); }
+}
+
 /* ---------- small print ---------- */
 /* lives in the strip reserved by #picker's bottom padding — above the
    picker's dark gradient so it stays visible, but the reserved strip

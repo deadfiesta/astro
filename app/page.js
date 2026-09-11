@@ -16,7 +16,15 @@ export default function Home() {
   const [systemId, setSystemId] = useState('sol');
   const [speed, setSpeed] = useState(1);
   const [paused, setPaused] = useState(false);
+  const [sysInfoVisible, setSysInfoVisible] = useState(true);
   const sceneRef = useRef(null);
+
+  // introduce each system with its one-liner on arrival, then fade it out
+  useEffect(() => {
+    setSysInfoVisible(true);
+    const t = setTimeout(() => setSysInfoVisible(false), 8000);
+    return () => clearTimeout(t);
+  }, [systemId]);
 
   // gentler default pace when the visitor prefers reduced motion
   useEffect(() => {
@@ -68,6 +76,10 @@ export default function Home() {
         onReset={reset}
       />
       <SystemPicker systemId={systemId} onPick={goToSystem} />
+      <div id="sys-banner" className={sysInfoVisible && !body ? 'show' : ''}>
+        <span className="sys-banner-name">{system.emoji} {system.name}</span>
+        <span className="sys-banner-desc">{system.description}</span>
+      </div>
       <FactCard body={body} onClose={deselect} />
       <PlanetPicker system={system} selectedId={selectedId} onSelect={select} />
       <div id="credit">
