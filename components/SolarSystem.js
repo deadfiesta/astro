@@ -161,6 +161,7 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
     const bodies = [];
     const pickables = [];
     let moonMesh = null;
+    let moonLabelRef = null;
 
     // load-in: a sped-up system formation — a swirling nebula disk spirals
     // inward, the star ignites from the collapsing core, planets condense
@@ -360,6 +361,7 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
         moonLabel.userData.id = 'moon';
         pickables.push(moonLabel);
         moonMesh.add(moonLabel);
+        moonLabelRef = moonLabel;
 
         // generous invisible tap target — the Moon itself is tiny and moving
         const moonHit = new THREE.Mesh(
@@ -380,14 +382,14 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
       // condensation order: the star ignites first, planets follow outward
       const delay = isSun ? 0.45 : 0.85 + planetIdx++ * 0.11;
       if (!intro.done) pivot.scale.setScalar(0.0001);
-      bodies.push({ data: b, pivot, mesh, moon, delay, angle: Math.random() * Math.PI * 2 });
+      bodies.push({ data: b, pivot, mesh, moon, delay, label, angle: Math.random() * Math.PI * 2 });
     }
     }
 
     const byId = Object.fromEntries(bodies.map((x) => [x.data.id, x]));
     // the Moon is selectable like a planet; its "pivot" is the mesh itself,
     // so world-position tracking follows it around Earth
-    if (moonMesh) byId.moon = { data: MOON, pivot: moonMesh };
+    if (moonMesh) byId.moon = { data: MOON, pivot: moonMesh, label: moonLabelRef };
 
     // Bouncing astronaut: same take-off effort everywhere, so jump height and
     // hang time follow the selected world's real surface gravity (v² = 2gh).
@@ -440,16 +442,16 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
       ctx.closePath();
       ctx.fillStyle = 'rgba(16, 22, 52, 0.95)';
       ctx.fill();
-      ctx.font = '700 38px ui-rounded, "SF Pro Rounded", "Arial Rounded MT Bold", system-ui, sans-serif';
+      ctx.font = '700 31px ui-rounded, "SF Pro Rounded", "Arial Rounded MT Bold", system-ui, sans-serif';
       ctx.textAlign = 'center';
       ctx.fillStyle = '#F4F6FF';
-      ctx.fillText('Psst! Drag me around to', 256, 62);
-      ctx.fillText('feel the gravity here! 🚀', 256, 112);
+      ctx.fillText('Psst! Drag me around to', 256, 60);
+      ctx.fillText('feel the gravity here! 🚀', 256, 108);
       const mat = new THREE.SpriteMaterial({
         map: new THREE.CanvasTexture(c), transparent: true, opacity: 0, depthWrite: false,
       });
       const s = new THREE.Sprite(mat);
-      s.scale.set(3.4, 1.275, 1);
+      s.scale.set(2.7, 1.01, 1);
       s.position.y = 2.1;
       s.visible = false;
       astro.add(s);
@@ -485,6 +487,10 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
       // dress for the weather: hot worlds get beach gear, cold ones get
       // winter layers; Earth (and anywhere unlisted) keeps the plain suit
       for (const key in astroOutfits) astroOutfits[key].visible = key === id;
+      // hide the visited body's floating name — up close it fills the screen
+      for (const key in byId) {
+        if (byId[key].label) byId[key].label.visible = key !== id;
+      }
       if (!ent || !g) {
         astro.visible = false;
         astroState.id = null;
