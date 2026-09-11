@@ -452,7 +452,7 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
 
     // live environment reflections for the visor: a small cube camera at the
     // helmet captures the real scene (star, planet, flames, starfield)
-    const visorRT = new THREE.WebGLCubeRenderTarget(128, {
+    const visorRT = new THREE.WebGLCubeRenderTarget(256, {
       generateMipmaps: true,
       minFilter: THREE.LinearMipmapLinearFilter,
     });
@@ -461,6 +461,20 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
     visorMat.envMap = visorRT.texture;
     visorMat.needsUpdate = true;
     let visorFrame = 0;
+    // reflection kickers: soft bright blobs on a layer only the visor's cube
+    // camera renders — space is mostly black, so these give the glass moving
+    // studio-style highlights on top of the true planet/star reflections
+    const kickerA = new THREE.Sprite(new THREE.SpriteMaterial({
+      map: sunGlowTexture(), color: '#FFFFFF', transparent: true, opacity: 0.95, depthWrite: false,
+    }));
+    kickerA.scale.set(11, 11, 1);
+    kickerA.layers.set(1);
+    scene.add(kickerA);
+    const kickerB = new THREE.Sprite(kickerA.material);
+    kickerB.scale.set(5, 5, 1);
+    kickerB.layers.set(1);
+    scene.add(kickerB);
+    visorCam.children.forEach((c) => c.layers.enable(1));
     astro.visible = false;
     scene.add(astro);
     // pos/vel are relative to the planet's center. normal is the surface
@@ -1255,6 +1269,8 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
       if (astro.visible && visorFrame++ % 3 === 0) {
         visorCam.position.copy(astro.position);
         visorCam.position.y += astroState.s;
+        kickerA.position.set(astro.position.x - 7, astro.position.y + 9, astro.position.z + 5);
+        kickerB.position.set(astro.position.x + 6, astro.position.y + 4, astro.position.z - 4);
         astro.visible = false;
         visorCam.update(renderer, scene);
         astro.visible = true;
