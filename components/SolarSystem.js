@@ -160,10 +160,13 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
     const pickables = [];
     let moonMesh = null;
 
-    // load-in: stars pop first, then planets appear in orbit order,
-    // all inside one second (skipped under reduced motion)
+    // load-in: a sped-up system formation — a swirling nebula disk spirals
+    // inward, the star ignites from the collapsing core, planets condense
+    // outward in order, and the leftover dust dissipates (~2.3s total;
+    // skipped under reduced motion)
     const intro = { t: 0, done: reducedMotion };
     const introFades = []; // orbit-line materials fading up with the intro
+    const nebulae = []; // one spiraling dust cloud per system
 
     // Kuiper Belt: an icy doughnut of frozen chunks past Neptune
     {
@@ -224,6 +227,45 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
     scene.add(sysGroup);
     const sysLight = new THREE.PointLight('#FFE9B8', 3.4, 400, 0.05);
     sysGroup.add(sysLight);
+
+    if (!intro.done) {
+      // formation nebula: particles start on a wide puffy disk and spiral
+      // onto their targets — half into the star, half onto planet orbits
+      const extent = Math.max(...sys.bodies.map((b) => b.orbit + b.radius));
+      const N = sys.id === 'sol' ? 900 : 350;
+      const rnd = mulberry(Math.round(sys.center[0]) * 7 + 99);
+      const posA = new Float32Array(N * 3);
+      const colA = new Float32Array(N * 3);
+      const parts = [];
+      const star = sys.bodies[0];
+      for (let i = 0; i < N; i++) {
+        const toStar = rnd() < 0.5;
+        const planet = sys.bodies[1 + Math.floor(rnd() * (sys.bodies.length - 1))];
+        const rT = toStar ? rnd() * star.radius * 0.6 : planet.orbit + (rnd() - 0.5) * 2;
+        parts.push({
+          r0: extent * (0.3 + Math.pow(rnd(), 0.7) * 1.15),
+          rT,
+          a: rnd() * Math.PI * 2,
+          w: 6 / (rT + 3) + 0.5, // differential rotation: inner dust spins faster
+          y0: (rnd() - 0.5) * extent * 0.3,
+        });
+        // dust palette: cool blue-violet cloud with warm sparks
+        const warm = rnd() < 0.3;
+        colA[i * 3] = warm ? 1 : 0.45 + rnd() * 0.2;
+        colA[i * 3 + 1] = warm ? 0.7 : 0.5 + rnd() * 0.2;
+        colA[i * 3 + 2] = warm ? 0.25 : 0.9;
+      }
+      const nebGeo = new THREE.BufferGeometry();
+      nebGeo.setAttribute('position', new THREE.BufferAttribute(posA, 3));
+      nebGeo.setAttribute('color', new THREE.BufferAttribute(colA, 3));
+      const nebMat = new THREE.PointsMaterial({
+        size: 1.8, sizeAttenuation: false, vertexColors: true, transparent: true,
+        opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false,
+      });
+      const nebPts = new THREE.Points(nebGeo, nebMat);
+      sysGroup.add(nebPts);
+      nebulae.push({ pts: nebPts, geo: nebGeo, mat: nebMat, parts, group: sysGroup });
+    }
 
     let planetIdx = 0;
     for (const b of sys.bodies) {
@@ -332,8 +374,8 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
       }
 
       orbitParent.add(pivot);
-      // staggered entrance: star at 0, planets follow in orbit order
-      const delay = isSun ? 0 : 0.12 + planetIdx++ * 0.055;
+      // condensation order: the star ignites first, planets follow outward
+      const delay = isSun ? 0.45 : 0.85 + planetIdx++ * 0.11;
       if (!intro.done) pivot.scale.setScalar(0.0001);
       bodies.push({ data: b, pivot, mesh, moon, delay, angle: Math.random() * Math.PI * 2 });
     }
@@ -634,23 +676,49 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
         if (b.moon) b.moon.rotation.y += 1.6 * spd * dt;
       }
 
-      // load-in pop: ease-out-back scale per body, orbit lines fade up
+      // formation intro: the nebula spirals in, bodies condense out of it,
+      // orbit rings emerge, and the leftover dust dissipates
       if (!intro.done) {
         intro.t += dt;
+        const T = intro.t;
+        const settle = THREE.MathUtils.clamp(T / 1.9, 0, 1);
+        const eN = 1 - Math.pow(1 - settle, 2.2); // collapse eases in hard, lands soft
+        // brighten fast, then dissipate as the planets take over
+        const glow = Math.min(T / 0.3, 1) * (1 - THREE.MathUtils.clamp((T - 1.55) / 0.75, 0, 1));
+        for (const nb of nebulae) {
+          const pos = nb.geo.attributes.position.array;
+          for (let i = 0; i < nb.parts.length; i++) {
+            const p = nb.parts[i];
+            p.a += p.w * dt * (1 + 2.5 * (1 - eN)); // churns fast, calms as it settles
+            const r = THREE.MathUtils.lerp(p.r0, p.rT, eN);
+            pos[i * 3] = Math.cos(p.a) * r;
+            pos[i * 3 + 1] = p.y0 * (1 - eN); // the puffy cloud flattens into a disk
+            pos[i * 3 + 2] = Math.sin(p.a) * r;
+          }
+          nb.geo.attributes.position.needsUpdate = true;
+          nb.mat.opacity = 0.85 * glow;
+        }
+
         let allDone = true;
         for (const b of bodies) {
-          const p = THREE.MathUtils.clamp((intro.t - b.delay) / 0.35, 0, 1);
+          const p = THREE.MathUtils.clamp((T - b.delay) / 0.35, 0, 1);
           if (p < 1) allDone = false;
           const c = 1.4; // back-ease overshoot for a playful pop
           const e = p === 0 ? 0 : 1 + (c + 1) * Math.pow(p - 1, 3) + c * Math.pow(p - 1, 2);
           b.pivot.scale.setScalar(Math.max(0.0001, e));
         }
-        const fade = Math.min(1, intro.t / 0.9);
+        const fade = THREE.MathUtils.clamp((T - 1.5) / 0.8, 0, 1);
         for (const f of introFades) f.mat.opacity = f.target * fade;
-        if (allDone && fade >= 1) {
+        if (allDone && fade >= 1 && T > 2.3) {
           intro.done = true;
           for (const b of bodies) b.pivot.scale.setScalar(1);
           for (const f of introFades) f.mat.opacity = f.target;
+          for (const nb of nebulae) {
+            nb.group.remove(nb.pts);
+            nb.geo.dispose();
+            nb.mat.dispose();
+          }
+          nebulae.length = 0;
         }
       }
 
