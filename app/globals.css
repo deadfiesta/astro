@@ -353,6 +353,25 @@ body {
 .sys-btn.active { border-color: var(--sun); background: rgba(255, 201, 60, 0.16); }
 .sys-btn:focus-visible { outline: 3px solid var(--sun); outline-offset: 2px; }
 .sys-emoji { font-size: 18px; line-height: 1; }
+/* phones: the list is long now — one swipeable row under the top bar */
+@media (max-width: 699px) {
+  #systems {
+    left: 12px;
+    right: 12px;
+    flex-direction: row;
+    overflow-x: auto;
+    scrollbar-width: none;
+    padding-bottom: 4px;
+  }
+  #systems::-webkit-scrollbar { display: none; }
+  #systems-title { display: none; }
+  .sys-btn {
+    flex: 0 0 auto;
+    min-height: 40px;
+    padding: 6px 12px 6px 9px;
+    font-size: 12px;
+  }
+}
 
 /* ---------- small print ---------- */
 /* lives in the strip reserved by #picker's bottom padding — above the

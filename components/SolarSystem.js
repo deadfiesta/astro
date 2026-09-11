@@ -269,7 +269,7 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
 
     let planetIdx = 0;
     for (const b of sys.bodies) {
-      const isSun = b.orbit === 0; // the system's star
+      const isSun = b.orbit === 0 || !!b.star; // stars, incl. orbiting companions
       const geo = new THREE.SphereGeometry(b.radius, 48, 32);
       const mat = isSun
         ? new THREE.MeshBasicMaterial({ map: sunTexture(b.starColors) })
@@ -328,8 +328,9 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
         }));
         glow.scale.set(b.radius * 5.2, b.radius * 5.2, 1);
         pivot.add(glow);
-      } else {
-        // orbit line in the planet's color
+      }
+      if (b.orbit > 0) {
+        // orbit line (planets AND orbiting companion stars)
         const pts = [];
         for (let i = 0; i <= 128; i++) {
           const t = (i / 128) * Math.PI * 2;
@@ -505,7 +506,7 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
       astroState.struggle = G > 100;
       astroState.tStrain = 0;
       // standing on a star means standing IN fire
-      astroState.burning = ent.data.orbit === 0;
+      astroState.burning = ent.data.orbit === 0 || !!ent.data.star;
       // gas worlds have no surface: the astronaut floats in the thick gas
       astroState.suspend = !!ent.data.gas;
       astroState.hoverBase = 0.12 + ent.data.radius * 0.05;
