@@ -16,15 +16,31 @@ export default function Home() {
   const [systemId, setSystemId] = useState('sol');
   const [speed, setSpeed] = useState(1);
   const [paused, setPaused] = useState(false);
-  const [sysInfoVisible, setSysInfoVisible] = useState(true);
+  const [sysInfoVisible, setSysInfoVisible] = useState(false);
   const sceneRef = useRef(null);
+  const infoTimer = useRef(null);
 
-  // introduce each system with its one-liner on arrival, then fade it out
-  useEffect(() => {
+  // shown once the camera has arrived and come to a stop (onArrive below)
+  const showSysInfo = useCallback(() => {
     setSysInfoVisible(true);
-    const t = setTimeout(() => setSysInfoVisible(false), 8000);
-    return () => clearTimeout(t);
+    clearTimeout(infoTimer.current);
+    infoTimer.current = setTimeout(() => setSysInfoVisible(false), 8000);
+  }, []);
+
+  // hide the old banner the moment travel to another system begins
+  useEffect(() => {
+    setSysInfoVisible(false);
   }, [systemId]);
+
+  // first load: no camera flight happens, so introduce Our Solar System
+  // right after the formation intro settles
+  useEffect(() => {
+    const t = setTimeout(showSysInfo, 2600);
+    return () => {
+      clearTimeout(t);
+      clearTimeout(infoTimer.current);
+    };
+  }, [showSysInfo]);
 
   // gentler default pace when the visitor prefers reduced motion
   useEffect(() => {
@@ -67,6 +83,7 @@ export default function Home() {
         speed={speed}
         paused={paused}
         onSelect={select}
+        onArrive={showSysInfo}
       />
       <ControlBar
         speed={speed}

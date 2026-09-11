@@ -31,7 +31,7 @@ const FEATURE_VIEWS = {
 
 /* The whole Three.js scene lives here. React state stays outside;
    the animation loop reads live values through refs. */
-const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused, onSelect }, ref) {
+const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused, onSelect, onArrive }, ref) {
   const canvasRef = useRef(null);
   const world = useRef(null); // { camera, controls, byId, flyTo, followOffset }
 
@@ -39,9 +39,11 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
   const pausedRef = useRef(paused);
   const selectedRef = useRef(selectedId);
   const onSelectRef = useRef(onSelect);
+  const onArriveRef = useRef(onArrive);
   useEffect(() => { speedRef.current = speed; }, [speed]);
   useEffect(() => { pausedRef.current = paused; }, [paused]);
   useEffect(() => { onSelectRef.current = onSelect; }, [onSelect]);
+  useEffect(() => { onArriveRef.current = onArrive; }, [onArrive]);
 
   // when the selection changes, size the camera offset to the body,
   // or fly to a fixed viewpoint for belt/cloud features
@@ -573,6 +575,7 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
       if (reducedMotion) {
         camera.position.copy(pos);
         controls.target.copy(target);
+        onArriveRef.current?.();
         return;
       }
       // long interstellar hops take longer than local flights
@@ -1139,7 +1142,10 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
         const k = fly.t >= 1 ? 1 : 1 - Math.pow(1 - fly.t, 3);
         camera.position.lerpVectors(fly.fromP, fly.toP, k);
         controls.target.lerpVectors(fly.fromT, fly.toT, k);
-        if (fly.t >= 1) fly = null;
+        if (fly.t >= 1) {
+          fly = null;
+          onArriveRef.current?.(); // camera at rest — safe to show arrival UI
+        }
       }
 
       controls.update();
