@@ -485,7 +485,7 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
       id: null, G: 0, v0: 0, s: 1, sq: 0, sqV: 0,
       mode: 'air', groundT: 0, waveT: 0, h: 0, hv: 0, lean: 0,
       dW: 0.16, w1: 13, w2: 13, tAbs: 0.12, tPush: 0.12,
-      struggle: false, tStrain: 0, suspend: false, hoverBase: 1, burning: false,
+      struggle: false, suspend: false, hoverBase: 1, burning: false,
       pos: new THREE.Vector3(), vel: new THREE.Vector3(),
       prevVel: new THREE.Vector3(), dragTarget: new THREE.Vector3(),
       normal: new THREE.Vector3(0, 1, 0), accelSm: new THREE.Vector3(),
@@ -586,9 +586,9 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
       astroState.sq = 0;
       astroState.sqV = 0;
       astroState.lean = 0;
-      // extreme gravity (>~11g — the Sun): jumps become failed attempts
+      // extreme gravity (>~11g — the Sun and dwarf stars): jumping is
+      // impossible, so after landing the astronaut just stands and waves
       astroState.struggle = G > 100;
-      astroState.tStrain = 0;
       // standing on a star means standing IN fire
       astroState.burning = ent.data.orbit === 0 || !!ent.data.star;
       // gas worlds have no surface: the astronaut floats in the thick gas
@@ -637,14 +637,6 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
       st.w1 = THREE.MathUtils.clamp(vIn / st.dW, 6, 14);
       st.w2 = THREE.MathUtils.clamp(vOut / st.dW, 6, 16);
       st.tAbs = Math.PI / (2 * st.w1);
-      if (st.struggle) {
-        // the push is far too slow to reach take-off speed: a long, trembling
-        // strain at the bottom, then a heave that barely leaves the ground
-        st.w2 *= 0.22;
-        st.tStrain = 0.55;
-      } else {
-        st.tStrain = 0;
-      }
       st.tPush = Math.PI / (2 * st.w2);
       st.groundT = 0;
       st.mode = 'ground';
@@ -967,6 +959,11 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
               landAstronaut(-vn);
             }
           }
+        } else if (st.mode === 'stand') {
+          // planted on a world too heavy for jumping — feet stay put, the
+          // pose section keeps the arms waving hello
+          st.pos.copy(st.normal).multiplyScalar(surfR);
+          st.vel.set(0, 0, 0);
         } else if (st.mode === 'hover') {
           // suspended in the gas: an underdamped buoyancy spring, so arrivals
           // sink into the clouds, bob back up, and settle into the ambient float
@@ -985,15 +982,17 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
             // absorb: body still falling at impact speed, knees decelerate it
             b = -st.dW * Math.sin(st.w1 * t);
             bv = -st.dW * st.w1 * Math.cos(st.w1 * t);
-          } else if (t < st.tAbs + st.tStrain) {
-            // struggling: stuck at the bottom of the crouch, trembling
-            b = -st.dW * (1 - 0.05 * Math.sin(t * 45));
-            bv = 0;
-          } else if (t < st.tAbs + st.tStrain + st.tPush) {
+          } else if (t < st.tAbs + st.tPush) {
             // push: accelerate up out of the deepest point of the crouch
-            const tau = t - st.tAbs - st.tStrain;
+            const tau = t - st.tAbs;
             b = -st.dW * Math.cos(st.w2 * tau);
             bv = st.dW * st.w2 * Math.sin(st.w2 * tau);
+          } else if (st.struggle) {
+            // gravity too strong to leave the ground: stand planted instead
+            b = 0;
+            bv = 0;
+            st.mode = 'stand';
+            st.hv = 0;
           } else {
             b = 0;
             bv = st.dW * st.w2;
@@ -1041,16 +1040,6 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
           for (const L of astroLimbs) {
             if (L.knee) L.rest = L.baseRest;
           }
-        } else if (st.struggle) {
-          // no cheery wave here: arms brace outward and shake with effort,
-          // hardest at the bottom of the crouch
-          st.waveT += spd * dt;
-          const jitter = 0.1 * Math.sin(st.waveT * 42) * crouch;
-          waveArm.rest = waveArm.baseRest + 0.6 * crouch + jitter;
-          swingArm.rest = swingArm.baseRest - 0.6 * crouch - jitter;
-          for (const L of astroLimbs) {
-            if (L.knee) L.rest = L.baseRest;
-          }
         } else {
           st.waveT += spd * dt;
           // both arms raised overhead in a mirrored "hooray" wave; they dip
@@ -1088,7 +1077,7 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
           // elbows: passive trailing bend from the swing, plus the hello-wave
           if (L.elbow) {
             let bend = L.out * 0.18 + THREE.MathUtils.clamp(-L.omega * 0.35, -0.7, 0.7);
-            const wag = held || st.struggle ? 0 : Math.sin(st.waveT * 7) * 0.45 * (1 - spread);
+            const wag = held ? 0 : Math.sin(st.waveT * 7) * 0.45 * (1 - spread);
             if (L === waveArm) bend += wag;
             if (L === swingArm) bend -= wag;
             L.elbow.rotation.z = bend;
