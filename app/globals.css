@@ -1,3 +1,26 @@
+/* Tailwind v4, WITHOUT preflight: utilities and theme only, so the existing
+   hand-rolled styles below are untouched. Use utility classes freely in new
+   components; to override the id-based styles below, use the important
+   variant (e.g. !bg-space). Enable preflight later by replacing these two
+   imports with: @import "tailwindcss"; */
+@layer theme, utilities;
+@import 'tailwindcss/theme.css' layer(theme);
+@import 'tailwindcss/utilities.css' layer(utilities);
+
+/* app design tokens exposed to Tailwind: bg-space, bg-space-2, text-sun,
+   text-ink, text-ink-dim, border-sun-deep, font-display, rounded-card... */
+@theme {
+  --color-space: #070b21;
+  --color-space-2: #0d1330;
+  --color-panel: rgb(16 22 52 / 0.88);
+  --color-ink: #f4f6ff;
+  --color-ink-dim: #aab4e0;
+  --color-sun: #ffc93c;
+  --color-sun-deep: #ff9f1c;
+  --radius-card: 22px;
+  --font-display: ui-rounded, 'SF Pro Rounded', 'Arial Rounded MT Bold', 'Hiragino Maru Gothic ProN', system-ui, sans-serif;
+}
+
 /* Single-theme by design: this is outer space, it is dark everywhere.
    Every color is painted explicitly so the page holds on any host ground. */
 :root {
