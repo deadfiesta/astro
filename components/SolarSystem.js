@@ -448,7 +448,19 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
     // realistic ~0.47 s of airtime. Every other world scales from the same
     // effort, so the Moon's leap is ~6x Earth's, Jupiter's a stubby hop.
     const JUMP_V = 2.12;
-    const { group: astro, body: astroBody, limbs: astroLimbs, swingArm, waveArm, outfits: astroOutfits } = buildAstronaut();
+    const { group: astro, body: astroBody, limbs: astroLimbs, swingArm, waveArm, outfits: astroOutfits, visorMat } = buildAstronaut();
+
+    // live environment reflections for the visor: a small cube camera at the
+    // helmet captures the real scene (star, planet, flames, starfield)
+    const visorRT = new THREE.WebGLCubeRenderTarget(128, {
+      generateMipmaps: true,
+      minFilter: THREE.LinearMipmapLinearFilter,
+    });
+    const visorCam = new THREE.CubeCamera(0.5, 2000, visorRT);
+    scene.add(visorCam);
+    visorMat.envMap = visorRT.texture;
+    visorMat.needsUpdate = true;
+    let visorFrame = 0;
     astro.visible = false;
     scene.add(astro);
     // pos/vel are relative to the planet's center. normal is the surface
@@ -1237,6 +1249,17 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
           controls.target.copy(world.current.sysCenter).addScaledVector(tmp.normalize(), 200);
         }
       }
+      // refresh the visor's mirrored surroundings (every 3rd frame, and only
+      // while the astronaut is on screen); hide the astronaut so the visor
+      // doesn't reflect its own helmet
+      if (astro.visible && visorFrame++ % 3 === 0) {
+        visorCam.position.copy(astro.position);
+        visorCam.position.y += astroState.s;
+        astro.visible = false;
+        visorCam.update(renderer, scene);
+        astro.visible = true;
+      }
+
       renderer.render(scene, camera);
     }
     animate();
@@ -1250,6 +1273,7 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
       canvas.removeEventListener('pointercancel', onUp);
       controls.removeEventListener('start', onControlStart);
       controls.dispose();
+      visorRT.dispose();
       scene.traverse((obj) => {
         obj.geometry?.dispose?.();
         const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
