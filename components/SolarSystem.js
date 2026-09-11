@@ -1198,18 +1198,17 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
         const k = fly.t >= 1 ? 1 : 1 - Math.pow(1 - fly.t, 3);
         camera.position.lerpVectors(fly.fromP, fly.toP, k);
         controls.target.lerpVectors(fly.fromT, fly.toT, k);
-        // light-year odometer counts up with the flight
+        // light-year odometer counts up with the flight; the fade-out starts
+        // during the final approach so it has fully vanished by touchdown
         if (fly.ly && lyRef.current) {
           const v = fly.ly * k;
           lyRef.current.textContent =
             `✨ ${v < 10 ? v.toFixed(1) : Math.round(v).toLocaleString()} light-years`;
-          lyRef.current.classList.add('show');
+          const remaining = (1 - fly.t) * fly.dur;
+          lyRef.current.classList.toggle('show', remaining > 0.5);
         }
         if (fly.t >= 1) {
-          if (fly.ly && lyRef.current) {
-            const el = lyRef.current;
-            setTimeout(() => el.classList.remove('show'), 700); // subtle fade-out
-          }
+          lyRef.current?.classList.remove('show');
           fly = null;
           onArriveRef.current?.(); // camera at rest — safe to show arrival UI
         }
