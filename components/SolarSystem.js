@@ -1,6 +1,7 @@
 'use client';
 
 import { forwardRef, useEffect, useImperativeHandle, useRef } from 'react';
+import { animate as motionAnimate } from 'motion';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { MOON, SYSTEMS } from '@/lib/bodies';
@@ -627,6 +628,7 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
     // smooth camera fly (instant under reduced motion); `ly` shows the
     // light-year odometer counting up over the trip
     let fly = null;
+    let lyShown = false;
     function flyTo(pos, target, ly) {
       if (reducedMotion) {
         camera.position.copy(pos);
@@ -1211,11 +1213,17 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
           const v = fly.ly * k;
           lyRef.current.textContent =
             `✨ ${v < 10 ? v.toFixed(1) : Math.round(v).toLocaleString()} light-years`;
-          const remaining = (1 - fly.t) * fly.dur;
-          lyRef.current.classList.toggle('show', remaining > 0.5);
+          const wantShown = (1 - fly.t) * fly.dur > 0.5;
+          if (wantShown !== lyShown) {
+            lyShown = wantShown;
+            motionAnimate(lyRef.current, { opacity: wantShown ? 1 : 0 }, { duration: 0.45, ease: 'easeOut' });
+          }
         }
         if (fly.t >= 1) {
-          lyRef.current?.classList.remove('show');
+          if (lyShown && lyRef.current) {
+            lyShown = false;
+            motionAnimate(lyRef.current, { opacity: 0 }, { duration: 0.15 });
+          }
           fly = null;
           onArriveRef.current?.(); // camera at rest — safe to show arrival UI
         }

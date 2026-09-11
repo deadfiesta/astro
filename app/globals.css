@@ -112,57 +112,34 @@ body {
 
 @media (prefers-reduced-motion: reduce) {
   .ctl, .planet-btn { transition: none; }
-  .topbar, #systems, #picker, #credit { transition: none !important; }
 }
 
-/* ---------- HUD entrance: hidden until the formation intro finishes ---------- */
-.topbar { transition: opacity 0.7s ease, transform 0.7s ease; }
-#systems { transition: opacity 0.7s ease 0.15s, transform 0.7s ease 0.15s; }
-#picker { transition: opacity 0.7s ease 0.3s, transform 0.7s ease 0.3s; }
-#credit { transition: opacity 0.9s ease 0.55s; }
-.hud-hidden .topbar {
-  opacity: 0;
-  transform: translateY(-16px);
-  pointer-events: none;
-}
-.hud-hidden .topbar * { pointer-events: none; }
-.hud-hidden #systems {
-  opacity: 0;
-  transform: translateX(-18px);
-  pointer-events: none;
-}
-.hud-hidden #picker {
-  opacity: 0;
-  transform: translateY(24px);
-  pointer-events: none;
-}
-.hud-hidden #credit { opacity: 0; }
+/* motion.dev drives all UI enter/exit animation; this only guarantees
+   hidden elements can't intercept touches mid-transition */
+.ui-off, .ui-off * { pointer-events: none !important; }
 
 /* ---------- fact card ---------- */
+/* #card is a static positioning shell; motion.dev animates .card-inner */
 #card {
   position: fixed;
   left: 50%;
   bottom: calc(112px + env(safe-area-inset-bottom));
-  transform: translateX(-50%) translateY(24px);
+  transform: translateX(-50%);
   width: min(480px, calc(100vw - 24px));
+  z-index: 6;
+  pointer-events: none;
+}
+#card .card-inner {
   background: var(--panel);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   border: 3px solid var(--planet-color, var(--sun));
   border-radius: var(--radius);
   padding: 18px 20px 16px;
-  z-index: 6;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 0.25s ease, transform 0.25s ease;
+  pointer-events: auto;
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
   max-height: min(48dvh, calc(100dvh - 220px));
   overflow-y: auto;
-}
-#card.open {
-  opacity: 1;
-  pointer-events: auto;
-  transform: translateX(-50%) translateY(0);
 }
 /* wider screens: dock the card to the right so the planet stays visible on the left */
 @media (min-width: 700px) {
@@ -172,11 +149,10 @@ body {
     bottom: auto;
     top: 50%;
     width: min(400px, 42vw);
-    max-height: calc(100dvh - 140px);
-    transform: translateY(-50%) translateX(24px);
+    transform: translateY(-50%);
   }
-  #card.open {
-    transform: translateY(-50%) translateX(0);
+  #card .card-inner {
+    max-height: calc(100dvh - 140px);
   }
 }
 .card-head {
@@ -291,11 +267,6 @@ body {
   font-weight: 600;
   line-height: 1.45;
   color: var(--ink);
-  animation: fact-in 0.3s ease;
-}
-@keyframes fact-in {
-  from { opacity: 0; transform: translateX(12px); }
-  to { opacity: 1; transform: none; }
 }
 .fun-dots {
   display: flex;
@@ -311,9 +282,6 @@ body {
   transition: background 0.15s ease, transform 0.15s ease;
 }
 .fun-dot.active { background: var(--sun); transform: scale(1.25); }
-@media (prefers-reduced-motion: reduce) {
-  .funfact-text { animation: none; }
-}
 
 /* ---------- planet picker ---------- */
 #picker {
@@ -435,17 +403,15 @@ body {
   color: var(--sun);
   text-shadow: 0 2px 12px rgba(7, 11, 33, 0.9);
   pointer-events: none;
-  opacity: 0;
-  transition: opacity 0.45s ease;
+  opacity: 0; /* faded in/out imperatively via motion.dev */
 }
-#ly-counter.show { opacity: 1; }
 
 /* ---------- system arrival banner ---------- */
+/* motion.dev drives opacity/x/y; base styles only */
 #sys-banner {
   position: fixed;
   left: 50%;
   top: calc(max(10px, env(safe-area-inset-top)) + 84px);
-  transform: translateX(-50%) translateY(-8px);
   z-index: 4;
   max-width: min(520px, calc(100vw - 24px));
   background: var(--panel);
@@ -457,12 +423,6 @@ body {
   gap: 3px;
   text-align: center;
   pointer-events: none;
-  opacity: 0;
-  transition: opacity 0.5s ease, transform 0.5s ease;
-}
-#sys-banner.show {
-  opacity: 1;
-  transform: translateX(-50%) translateY(0);
 }
 .sys-banner-name {
   font-size: 16px;

@@ -1,14 +1,21 @@
 'use client';
 
+import { motion } from 'motion/react';
+
 const SPEEDS = [
   { value: 0.3, label: '🐢', aria: 'Turtle speed (slow)' },
   { value: 1, label: '🚶', aria: 'Normal speed' },
   { value: 3, label: '🚀', aria: 'Rocket speed (fast)' },
 ];
 
-export default function ControlBar({ speed, paused, onSpeed, onTogglePause, onReset }) {
+export default function ControlBar({ visible, speed, paused, onSpeed, onTogglePause, onReset }) {
   return (
-    <div className="topbar">
+    <motion.div
+      className={`topbar${visible ? '' : ' ui-off'}`}
+      initial={{ opacity: 0, y: -16 }}
+      animate={visible ? { opacity: 1, y: 0 } : { opacity: 0, y: -16 }}
+      transition={{ duration: 0.7, ease: 'easeOut' }}
+    >
       <div className="app-title">🚀 Little Orbit</div>
       <div className="controls">
         {SPEEDS.map((s) => (
@@ -26,6 +33,6 @@ export default function ControlBar({ speed, paused, onSpeed, onTogglePause, onRe
         </button>
         <button className="ctl" aria-label="See the whole solar system" onClick={onReset}>🌌</button>
       </div>
-    </div>
+    </motion.div>
   );
 }

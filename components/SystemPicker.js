@@ -1,11 +1,19 @@
 'use client';
 
+import { motion } from 'motion/react';
 import { SYSTEMS } from '@/lib/bodies';
 
 /* Galaxy navigation: fly between our solar system and its neighbors */
-export default function SystemPicker({ systemId, onPick }) {
+export default function SystemPicker({ visible, systemId, onPick }) {
   return (
-    <div id="systems" aria-label="Travel to another star system">
+    <motion.div
+      id="systems"
+      className={visible ? '' : 'ui-off'}
+      aria-label="Travel to another star system"
+      initial={{ opacity: 0, x: -18 }}
+      animate={visible ? { opacity: 1, x: 0 } : { opacity: 0, x: -18 }}
+      transition={{ duration: 0.7, ease: 'easeOut', delay: visible ? 0.15 : 0 }}
+    >
       <div id="systems-title">🌌 Star systems</div>
       {SYSTEMS.map((s) => (
         <button
@@ -17,6 +25,6 @@ export default function SystemPicker({ systemId, onPick }) {
           <span className="sys-name">{s.short}</span>
         </button>
       ))}
-    </div>
+    </motion.div>
   );
 }

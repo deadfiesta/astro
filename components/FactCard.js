@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { AnimatePresence, motion } from 'motion/react';
 
 // gravity chip built from the same value that drives the astronaut physics
 function chipsFor(body) {
@@ -47,49 +48,62 @@ export default function FactCard({ body, onClose }) {
   };
 
   return (
-    <div
-      id="card"
-      className={body ? 'open' : ''}
-      role="dialog"
-      aria-modal="false"
-      aria-labelledby="card-name"
-      style={body ? { '--planet-color': body.color } : undefined}
-    >
-      {body && (
-        <>
-          <div className="card-head">
-            <span id="card-emoji">{body.emoji}</span>
-            <h2 id="card-name" style={{ color: body.color }}>{body.name}</h2>
-            <button id="card-close" aria-label="Close" onClick={onClose}>✕</button>
-          </div>
-          <p id="card-fact">{body.fact}</p>
-          <div id="card-chips">
-            {chipsFor(body).map(([label, value]) => (
-              <div className="chip" key={label}>
-                <span className="chip-label">{label}</span>
-                <span className="chip-value">{value}</span>
-              </div>
-            ))}
-          </div>
-          {facts.length > 0 && (
-            <div className="funfact" onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
-              <div className="funfact-head">✨ Did you know?</div>
-              <div className="funfact-row">
-                <button className="fun-arrow" aria-label="Previous fun fact" onClick={prev}>◀</button>
-                {/* key={idx} restarts the slide-in animation on every change */}
-                <p className="funfact-text" key={idx} aria-live="polite">{facts[idx]}</p>
-                <button className="fun-arrow" aria-label="Next fun fact" onClick={next}>▶</button>
-              </div>
-              <div className="fun-dots" aria-hidden="true">
-                {facts.map((_, i) => (
-                  <span className={`fun-dot${i === idx ? ' active' : ''}`} key={i} />
-                ))}
-              </div>
+    <div id="card" style={body ? { '--planet-color': body.color } : undefined}>
+      <AnimatePresence mode="wait">
+        {body && (
+          <motion.div
+            key={body.id}
+            className="card-inner"
+            role="dialog"
+            aria-modal="false"
+            aria-labelledby="card-name"
+            initial={{ opacity: 0, y: 22, scale: 0.97 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 14, scale: 0.98 }}
+            transition={{ duration: 0.24, ease: 'easeOut' }}
+          >
+            <div className="card-head">
+              <span id="card-emoji">{body.emoji}</span>
+              <h2 id="card-name" style={{ color: body.color }}>{body.name}</h2>
+              <button id="card-close" aria-label="Close" onClick={onClose}>✕</button>
             </div>
-          )}
-          <button id="speak" onClick={speak}>🔊 Read it to me!</button>
-        </>
-      )}
+            <p id="card-fact">{body.fact}</p>
+            <div id="card-chips">
+              {chipsFor(body).map(([label, value]) => (
+                <div className="chip" key={label}>
+                  <span className="chip-label">{label}</span>
+                  <span className="chip-value">{value}</span>
+                </div>
+              ))}
+            </div>
+            {facts.length > 0 && (
+              <div className="funfact" onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
+                <div className="funfact-head">✨ Did you know?</div>
+                <div className="funfact-row">
+                  <button className="fun-arrow" aria-label="Previous fun fact" onClick={prev}>◀</button>
+                  <motion.p
+                    className="funfact-text"
+                    key={idx}
+                    aria-live="polite"
+                    initial={{ opacity: 0, x: 14 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ duration: 0.3, ease: 'easeOut' }}
+                  >
+                    {facts[idx]}
+                  </motion.p>
+                  <button className="fun-arrow" aria-label="Next fun fact" onClick={next}>▶</button>
+                </div>
+                <div className="fun-dots" aria-hidden="true">
+                  {facts.map((_, i) => (
+                    <span className={`fun-dot${i === idx ? ' active' : ''}`} key={i} />
+                  ))}
+                </div>
+              </div>
+            )}
+            <button id="speak" onClick={speak}>🔊 Read it to me!</button>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

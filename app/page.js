@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
+import { MotionConfig, motion } from 'motion/react';
 import { CARDS, SYSTEMS } from '@/lib/bodies';
 import FactCard from '@/components/FactCard';
 import PlanetPicker from '@/components/PlanetPicker';
@@ -76,35 +77,47 @@ export default function Home() {
   const system = SYSTEMS.find((s) => s.id === systemId) ?? SYSTEMS[0];
 
   return (
-    <main>
-      <SolarSystem
-        ref={sceneRef}
-        selectedId={selectedId}
-        speed={speed}
-        paused={paused}
-        onSelect={select}
-        onArrive={showSysInfo}
-        onReady={onSceneReady}
-      />
-      <div id="hud" className={uiVisible ? '' : 'hud-hidden'}>
+    <MotionConfig reducedMotion="user">
+      <main>
+        <SolarSystem
+          ref={sceneRef}
+          selectedId={selectedId}
+          speed={speed}
+          paused={paused}
+          onSelect={select}
+          onArrive={showSysInfo}
+          onReady={onSceneReady}
+        />
         <ControlBar
+          visible={uiVisible}
           speed={speed}
           paused={paused}
           onSpeed={setSpeed}
           onTogglePause={() => setPaused((p) => !p)}
           onReset={reset}
         />
-        <SystemPicker systemId={systemId} onPick={goToSystem} />
-        <PlanetPicker system={system} selectedId={selectedId} onSelect={select} />
-        <div id="credit">
+        <SystemPicker visible={uiVisible} systemId={systemId} onPick={goToSystem} />
+        <PlanetPicker visible={uiVisible} system={system} selectedId={selectedId} onSelect={select} />
+        <motion.div
+          id="credit"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: uiVisible ? 1 : 0 }}
+          transition={{ duration: 0.9, ease: 'easeOut', delay: uiVisible ? 0.55 : 0 }}
+        >
           A little passion project by Wen Kiong, making space a little more fun to explore and learn.
-        </div>
-      </div>
-      <div id="sys-banner" className={sysInfoVisible && !body ? 'show' : ''}>
-        <span className="sys-banner-name">{system.emoji} {system.name}</span>
-        <span className="sys-banner-desc">{system.description}</span>
-      </div>
-      <FactCard body={body} onClose={deselect} />
-    </main>
+        </motion.div>
+        <motion.div
+          id="sys-banner"
+          initial={false}
+          style={{ x: '-50%' }}
+          animate={sysInfoVisible && !body ? { opacity: 1, y: 0 } : { opacity: 0, y: -8 }}
+          transition={{ duration: 0.5, ease: 'easeOut' }}
+        >
+          <span className="sys-banner-name">{system.emoji} {system.name}</span>
+          <span className="sys-banner-desc">{system.description}</span>
+        </motion.div>
+        <FactCard body={body} onClose={deselect} />
+      </main>
+    </MotionConfig>
   );
 }
