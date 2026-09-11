@@ -32,15 +32,15 @@ export default function Home() {
     setSysInfoVisible(false);
   }, [systemId]);
 
-  // first load: no camera flight happens, so introduce Our Solar System
-  // right after the formation intro settles
-  useEffect(() => {
-    const t = setTimeout(showSysInfo, 2600);
-    return () => {
-      clearTimeout(t);
-      clearTimeout(infoTimer.current);
-    };
+  // fired by the scene when the formation intro completes: bring in the
+  // HUD, then introduce Our Solar System (no camera flight on first load)
+  const [uiVisible, setUiVisible] = useState(false);
+  const onSceneReady = useCallback(() => {
+    setUiVisible(true);
+    setTimeout(showSysInfo, 500);
   }, [showSysInfo]);
+
+  useEffect(() => () => clearTimeout(infoTimer.current), []);
 
   // gentler default pace when the visitor prefers reduced motion
   useEffect(() => {
@@ -84,24 +84,27 @@ export default function Home() {
         paused={paused}
         onSelect={select}
         onArrive={showSysInfo}
+        onReady={onSceneReady}
       />
-      <ControlBar
-        speed={speed}
-        paused={paused}
-        onSpeed={setSpeed}
-        onTogglePause={() => setPaused((p) => !p)}
-        onReset={reset}
-      />
-      <SystemPicker systemId={systemId} onPick={goToSystem} />
+      <div id="hud" className={uiVisible ? '' : 'hud-hidden'}>
+        <ControlBar
+          speed={speed}
+          paused={paused}
+          onSpeed={setSpeed}
+          onTogglePause={() => setPaused((p) => !p)}
+          onReset={reset}
+        />
+        <SystemPicker systemId={systemId} onPick={goToSystem} />
+        <PlanetPicker system={system} selectedId={selectedId} onSelect={select} />
+        <div id="credit">
+          A little passion project by Wen Kiong, making space a little more fun to explore and learn.
+        </div>
+      </div>
       <div id="sys-banner" className={sysInfoVisible && !body ? 'show' : ''}>
         <span className="sys-banner-name">{system.emoji} {system.name}</span>
         <span className="sys-banner-desc">{system.description}</span>
       </div>
       <FactCard body={body} onClose={deselect} />
-      <PlanetPicker system={system} selectedId={selectedId} onSelect={select} />
-      <div id="credit">
-        A little passion project by Wen Kiong, making space a little more fun to explore and learn.
-      </div>
     </main>
   );
 }

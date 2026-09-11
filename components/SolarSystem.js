@@ -31,7 +31,7 @@ const FEATURE_VIEWS = {
 
 /* The whole Three.js scene lives here. React state stays outside;
    the animation loop reads live values through refs. */
-const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused, onSelect, onArrive }, ref) {
+const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused, onSelect, onArrive, onReady }, ref) {
   const canvasRef = useRef(null);
   const lyRef = useRef(null); // light-year odometer shown during system trips
   const world = useRef(null); // { camera, controls, byId, flyTo, followOffset }
@@ -41,10 +41,12 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
   const selectedRef = useRef(selectedId);
   const onSelectRef = useRef(onSelect);
   const onArriveRef = useRef(onArrive);
+  const onReadyRef = useRef(onReady);
   useEffect(() => { speedRef.current = speed; }, [speed]);
   useEffect(() => { pausedRef.current = paused; }, [paused]);
   useEffect(() => { onSelectRef.current = onSelect; }, [onSelect]);
   useEffect(() => { onArriveRef.current = onArrive; }, [onArrive]);
+  useEffect(() => { onReadyRef.current = onReady; }, [onReady]);
 
   // when the selection changes, size the camera offset to the body,
   // or fly to a fixed viewpoint for belt/cloud features
@@ -178,7 +180,7 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
     // inward, the star ignites from the collapsing core, planets condense
     // outward in order, and the leftover dust dissipates (~2.3s total;
     // skipped under reduced motion)
-    const intro = { t: 0, done: reducedMotion };
+    const intro = { t: 0, done: reducedMotion, readyFired: false };
     const introFades = []; // orbit-line materials fading up with the intro
     const nebulae = []; // one spiraling dust cloud per system
 
@@ -822,6 +824,11 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
           }
           nebulae.length = 0;
         }
+      }
+      // tell the page the formation has finished (or was skipped) — once
+      if (intro.done && !intro.readyFired) {
+        intro.readyFired = true;
+        onReadyRef.current?.();
       }
 
       // astronaut: jump cycle, finger-drag, and a natural ballistic fall —

@@ -112,7 +112,31 @@ body {
 
 @media (prefers-reduced-motion: reduce) {
   .ctl, .planet-btn { transition: none; }
+  .topbar, #systems, #picker, #credit { transition: none !important; }
 }
+
+/* ---------- HUD entrance: hidden until the formation intro finishes ---------- */
+.topbar { transition: opacity 0.7s ease, transform 0.7s ease; }
+#systems { transition: opacity 0.7s ease 0.15s, transform 0.7s ease 0.15s; }
+#picker { transition: opacity 0.7s ease 0.3s, transform 0.7s ease 0.3s; }
+#credit { transition: opacity 0.9s ease 0.55s; }
+.hud-hidden .topbar {
+  opacity: 0;
+  transform: translateY(-16px);
+  pointer-events: none;
+}
+.hud-hidden .topbar * { pointer-events: none; }
+.hud-hidden #systems {
+  opacity: 0;
+  transform: translateX(-18px);
+  pointer-events: none;
+}
+.hud-hidden #picker {
+  opacity: 0;
+  transform: translateY(24px);
+  pointer-events: none;
+}
+.hud-hidden #credit { opacity: 0; }
 
 /* ---------- fact card ---------- */
 #card {
