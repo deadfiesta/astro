@@ -59,12 +59,14 @@ export default function Home() {
     window.speechSynthesis?.cancel();
     setSelectedId(null);
     if (sys.id === systemId) {
-      showSysInfo(); // already here — just re-introduce the system
+      // already here — zoom back out to the system's default overview
+      // (the description banner returns via onArrive when the camera stops)
+      sceneRef.current?.goToSystem(sys);
       return;
     }
     setSystemId(sys.id);
     sceneRef.current?.goToSystem(sys);
-  }, [systemId, showSysInfo]);
+  }, [systemId]);
 
   const deselect = useCallback(() => {
     window.speechSynthesis?.cancel();
