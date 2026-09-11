@@ -285,9 +285,11 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
     for (const b of sys.bodies) {
       const isSun = b.orbit === 0 || !!b.star; // stars, incl. orbiting companions
       const geo = new THREE.SphereGeometry(b.radius, 48, 32);
-      const mat = isSun
-        ? new THREE.MeshBasicMaterial({ map: sunTexture(b.starColors) })
-        : new THREE.MeshLambertMaterial({ map: textureFor(b), color: '#ffffff' });
+      const mat = b.blackHole
+        ? new THREE.MeshBasicMaterial({ color: '#04050C' }) // light doesn't escape
+        : isSun
+          ? new THREE.MeshBasicMaterial({ map: sunTexture(b.starColors) })
+          : new THREE.MeshLambertMaterial({ map: textureFor(b), color: '#ffffff' });
       const mesh = new THREE.Mesh(geo, mat);
       mesh.userData.id = b.id;
       pickables.push(mesh);
@@ -335,7 +337,41 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
       pivot.add(label);
       pickables.push(label);
 
-      if (isSun) {
+      if (b.blackHole) {
+        // silhouette look: tight warm rim halo behind the black sphere,
+        // plus a tilted glowing accretion-disk ring
+        const halo = new THREE.Sprite(new THREE.SpriteMaterial({
+          map: sunGlowTexture(), transparent: true, depthWrite: false, color: '#FFB05C',
+        }));
+        halo.scale.set(b.radius * 2.7, b.radius * 2.7, 1);
+        pivot.add(halo);
+
+        const [dc, dctx] = makeCanvas(256, 16);
+        const dg = dctx.createLinearGradient(0, 0, 256, 0);
+        dg.addColorStop(0, '#FFF6D8');
+        dg.addColorStop(0.35, '#FFB05C');
+        dg.addColorStop(0.75, '#C4502A');
+        dg.addColorStop(1, 'rgba(120,30,10,0)');
+        dctx.fillStyle = dg;
+        dctx.fillRect(0, 0, 256, 16);
+        const diskGeo = new THREE.RingGeometry(b.radius * 1.35, b.radius * 2.9, 80);
+        const dPos = diskGeo.attributes.position;
+        const dUv = diskGeo.attributes.uv;
+        const dv = new THREE.Vector3();
+        for (let i = 0; i < dPos.count; i++) {
+          dv.fromBufferAttribute(dPos, i);
+          dUv.setXY(i, (dv.length() - b.radius * 1.35) / (b.radius * 1.55), 0.5);
+        }
+        const disk = new THREE.Mesh(diskGeo, new THREE.MeshBasicMaterial({
+          map: new THREE.CanvasTexture(dc), side: THREE.DoubleSide,
+          transparent: true, blending: THREE.AdditiveBlending, depthWrite: false,
+        }));
+        disk.rotation.x = Math.PI / 2;
+        disk.userData.id = b.id;
+        pickables.push(disk);
+        spinGroup.add(disk);
+        spinGroup.rotation.z = 0.35; // tilt the disk for depth
+      } else if (isSun) {
         const glow = new THREE.Sprite(new THREE.SpriteMaterial({
           map: sunGlowTexture(), transparent: true, depthWrite: false,
           color: b.glowTint || '#FFFFFF', // tint red for the dwarf stars
