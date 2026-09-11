@@ -15,8 +15,7 @@ const SolarSystem = dynamic(() => import('@/components/SolarSystem'), { ssr: fal
 export default function Home() {
   const [selectedId, setSelectedId] = useState(null);
   const [systemId, setSystemId] = useState('sol');
-  const [speed, setSpeed] = useState(1);
-  const [paused, setPaused] = useState(false);
+  const [speed, setSpeed] = useState(1); // 0 = paused, 3 = rocket speed
   const [sysInfoVisible, setSysInfoVisible] = useState(false);
   const sceneRef = useRef(null);
   const infoTimer = useRef(null);
@@ -59,9 +58,13 @@ export default function Home() {
   const goToSystem = useCallback((sys) => {
     window.speechSynthesis?.cancel();
     setSelectedId(null);
+    if (sys.id === systemId) {
+      showSysInfo(); // already here — just re-introduce the system
+      return;
+    }
     setSystemId(sys.id);
     sceneRef.current?.goToSystem(sys);
-  }, []);
+  }, [systemId, showSysInfo]);
 
   const deselect = useCallback(() => {
     window.speechSynthesis?.cancel();
@@ -83,7 +86,7 @@ export default function Home() {
           ref={sceneRef}
           selectedId={selectedId}
           speed={speed}
-          paused={paused}
+          paused={speed === 0}
           onSelect={select}
           onArrive={showSysInfo}
           onReady={onSceneReady}
@@ -91,9 +94,7 @@ export default function Home() {
         <ControlBar
           visible={uiVisible}
           speed={speed}
-          paused={paused}
           onSpeed={setSpeed}
-          onTogglePause={() => setPaused((p) => !p)}
           onReset={reset}
         />
         <SystemPicker visible={uiVisible} systemId={systemId} onPick={goToSystem} />

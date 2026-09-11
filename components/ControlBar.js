@@ -2,13 +2,9 @@
 
 import { motion } from 'motion/react';
 
-const SPEEDS = [
-  { value: 0.3, label: '🐢', aria: 'Turtle speed (slow)' },
-  { value: 1, label: '🚶', aria: 'Normal speed' },
-  { value: 3, label: '🚀', aria: 'Rocket speed (fast)' },
-];
-
-export default function ControlBar({ visible, speed, paused, onSpeed, onTogglePause, onReset }) {
+/* One slider rules the clock: far left is paused, far right is the old
+   rocket speed (3x), with turtle/normal pace living along the way. */
+export default function ControlBar({ visible, speed, onSpeed, onReset }) {
   return (
     <motion.div
       className={`topbar${visible ? '' : ' ui-off'}`}
@@ -18,19 +14,20 @@ export default function ControlBar({ visible, speed, paused, onSpeed, onTogglePa
     >
       <div className="app-title">🚀 Little Orbit</div>
       <div className="controls">
-        {SPEEDS.map((s) => (
-          <button
-            key={s.value}
-            className={`ctl${speed === s.value ? ' active' : ''}`}
-            aria-label={s.aria}
-            onClick={() => onSpeed(s.value)}
-          >
-            {s.label}
-          </button>
-        ))}
-        <button className="ctl" aria-label={paused ? 'Play' : 'Pause'} onClick={onTogglePause}>
-          {paused ? '▶️' : '⏸️'}
-        </button>
+        <div className="speed-ctl">
+          <span className="speed-icon" aria-hidden="true">⏸️</span>
+          <input
+            type="range"
+            className="speed-slider"
+            min="0"
+            max="3"
+            step="0.05"
+            value={speed}
+            aria-label="Playback speed, from paused to rocket speed"
+            onChange={(e) => onSpeed(parseFloat(e.target.value))}
+          />
+          <span className="speed-icon" aria-hidden="true">🚀</span>
+        </div>
         <button className="ctl" aria-label="See the whole solar system" onClick={onReset}>🌌</button>
       </div>
     </motion.div>

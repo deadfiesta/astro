@@ -104,6 +104,52 @@ body {
   transition: transform 0.12s ease, border-color 0.12s ease, background 0.12s ease;
 }
 .ctl:active { transform: scale(0.92); }
+
+/* ---------- playback speed slider (pause -> rocket) ---------- */
+.speed-ctl {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 56px;
+  padding: 8px 14px;
+  border-radius: 18px;
+  border: 2px solid rgba(170, 180, 224, 0.35);
+  background: var(--panel);
+}
+.speed-icon { font-size: 17px; line-height: 1; }
+.speed-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 140px;
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(170, 180, 224, 0.3);
+  outline: none;
+  cursor: pointer;
+}
+.speed-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: linear-gradient(180deg, var(--sun), var(--sun-deep));
+  border: 2px solid rgba(58, 37, 0, 0.55);
+  cursor: pointer;
+}
+.speed-slider::-moz-range-thumb {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: linear-gradient(180deg, var(--sun), var(--sun-deep));
+  border: 2px solid rgba(58, 37, 0, 0.55);
+  cursor: pointer;
+}
+.speed-slider:focus-visible { outline: 3px solid var(--sun); outline-offset: 4px; }
+@media (max-width: 479px) {
+  .speed-slider { width: 88px; }
+  .speed-ctl { padding: 8px 10px; gap: 6px; }
+}
 .ctl.active {
   border-color: var(--sun);
   background: rgba(255, 201, 60, 0.18);
