@@ -87,32 +87,7 @@ body {
 }
 .ctl:focus-visible { outline: 3px solid var(--sun); outline-offset: 2px; }
 
-/* ---------- tap hint ---------- */
-#hint {
-  position: fixed;
-  left: 50%;
-  top: 22%;
-  transform: translateX(-50%);
-  z-index: 4;
-  background: var(--panel);
-  border: 2px solid rgba(255, 201, 60, 0.5);
-  border-radius: 999px;
-  padding: 12px 22px;
-  font-size: clamp(17px, 3vw, 22px);
-  font-weight: 700;
-  color: var(--ink);
-  pointer-events: none;
-  animation: bob 2.4s ease-in-out infinite;
-  transition: opacity 0.6s ease;
-}
-#hint.soft { opacity: 0.55; }
-#hint.hidden { opacity: 0; }
-@keyframes bob {
-  0%, 100% { transform: translateX(-50%) translateY(0); }
-  50% { transform: translateX(-50%) translateY(-8px); }
-}
 @media (prefers-reduced-motion: reduce) {
-  #hint { animation: none; }
   .ctl, .planet-btn { transition: none; }
 }
 

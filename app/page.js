@@ -16,8 +16,6 @@ export default function Home() {
   const [systemId, setSystemId] = useState('sol');
   const [speed, setSpeed] = useState(1);
   const [paused, setPaused] = useState(false);
-  const [everSelected, setEverSelected] = useState(false);
-  const [hintSoft, setHintSoft] = useState(false);
   const sceneRef = useRef(null);
 
   // gentler default pace when the visitor prefers reduced motion
@@ -25,15 +23,9 @@ export default function Home() {
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) setSpeed(0.3);
   }, []);
 
-  useEffect(() => {
-    const t = setTimeout(() => setHintSoft(true), 12000);
-    return () => clearTimeout(t);
-  }, []);
-
   const select = useCallback((id) => {
     window.speechSynthesis?.cancel();
     setSelectedId(id);
-    setEverSelected(true);
     // keep the planet row in sync with whichever system the body lives in
     const sys = SYSTEMS.find((s) => s.bodies.some((b) => b.id === id));
     if (sys) setSystemId(sys.id);
@@ -43,7 +35,6 @@ export default function Home() {
     window.speechSynthesis?.cancel();
     setSelectedId(null);
     setSystemId(sys.id);
-    setEverSelected(true);
     sceneRef.current?.goToSystem(sys);
   }, []);
 
@@ -76,9 +67,6 @@ export default function Home() {
         onTogglePause={() => setPaused((p) => !p)}
         onReset={reset}
       />
-      <div id="hint" className={`${everSelected ? 'hidden' : ''} ${hintSoft ? 'soft' : ''}`}>
-        👆 Tap a planet to say hello!
-      </div>
       <SystemPicker systemId={systemId} onPick={goToSystem} />
       <FactCard body={body} onClose={deselect} />
       <PlanetPicker system={system} selectedId={selectedId} onSelect={select} />

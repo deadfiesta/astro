@@ -419,6 +419,42 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
       astro.add(grab);
     }
 
+    // one-time speech bubble: on the first planet visit the astronaut
+    // suggests dragging it around to feel the local gravity
+    const bubble = (() => {
+      const [c, ctx] = makeCanvas(512, 192);
+      ctx.fillStyle = 'rgba(16, 22, 52, 0.95)';
+      ctx.strokeStyle = '#FFC93C';
+      ctx.lineWidth = 6;
+      ctx.beginPath();
+      ctx.roundRect(8, 8, 496, 132, 28);
+      ctx.fill();
+      ctx.stroke();
+      ctx.beginPath(); // tail pointing down at the helmet
+      ctx.moveTo(230, 138);
+      ctx.lineTo(256, 184);
+      ctx.lineTo(300, 138);
+      ctx.closePath();
+      ctx.fillStyle = 'rgba(16, 22, 52, 0.95)';
+      ctx.fill();
+      ctx.font = '700 38px ui-rounded, "SF Pro Rounded", "Arial Rounded MT Bold", system-ui, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillStyle = '#F4F6FF';
+      ctx.fillText('Psst! Drag me around to', 256, 62);
+      ctx.fillText('feel the gravity here! 🚀', 256, 112);
+      const mat = new THREE.SpriteMaterial({
+        map: new THREE.CanvasTexture(c), transparent: true, opacity: 0, depthWrite: false,
+      });
+      const s = new THREE.Sprite(mat);
+      s.scale.set(3.4, 1.275, 1);
+      s.position.y = 2.1;
+      s.visible = false;
+      astro.add(s);
+      return s;
+    })();
+    let bubbleState = 'waiting'; // waiting -> showing -> done
+    let bubbleT = 0;
+
     // burning feet on stars: additive flame particles — each ember spawns at
     // the boots, rises with buoyancy, flickers, and cools from white-hot
     // through orange to dark red (black = invisible under additive blending)
@@ -494,6 +530,11 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
         L.group.rotation.set(0, 0, L.baseRest);
         if (L.knee) L.knee.rotation.x = 0;
         if (L.elbow) L.elbow.rotation.z = 0;
+      }
+      // first visit ever: queue the "drag me" speech bubble
+      if (bubbleState === 'waiting') {
+        bubbleState = 'showing';
+        bubbleT = 0;
       }
       astro.visible = true;
     }
@@ -594,6 +635,7 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
       if (astro.visible && astroState.id && dragPointerId === null) {
         setPointer(e);
         if (raycaster.intersectObject(astro, true).length) {
+          bubbleState = 'done'; // they found the drag — tip delivered
           dragPointerId = e.pointerId;
           astroState.mode = 'drag';
           astroState.dragTarget.copy(astro.position);
@@ -987,6 +1029,16 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
         const leanTarget = held ? THREE.MathUtils.clamp(-st.vel.dot(vR) * 0.045, -0.5, 0.5) : 0;
         st.lean += (leanTarget - st.lean) * Math.min(1, dt * 8);
         astro.quaternion.multiply(qTmp.setFromAxisAngle(Z_AXIS, st.lean));
+
+        // speech bubble: fades in once the first landing has settled,
+        // fades out after a while (or instantly once the user grabs him)
+        if (bubbleState === 'showing') {
+          bubbleT += dt;
+          if (bubbleT > 8.5) bubbleState = 'done';
+        }
+        const bubbleWant = bubbleState === 'showing' && bubbleT > 1.4 ? 1 : 0;
+        bubble.material.opacity += (bubbleWant - bubble.material.opacity) * Math.min(1, dt * 6);
+        bubble.visible = bubble.material.opacity > 0.02;
 
         // flame simulation: burns near a star's surface, snuffs out when
         // the astronaut is lifted away
