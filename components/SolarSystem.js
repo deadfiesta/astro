@@ -33,6 +33,7 @@ const FEATURE_VIEWS = {
    the animation loop reads live values through refs. */
 const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused, onSelect, onArrive }, ref) {
   const canvasRef = useRef(null);
+  const lyRef = useRef(null); // light-year odometer shown during system trips
   const world = useRef(null); // { camera, controls, byId, flyTo, followOffset }
 
   const speedRef = useRef(speed);
@@ -71,6 +72,8 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
     if (sys) {
       w.sysCenter.set(sys.center[0], sys.center[1], sys.center[2]);
       w.homeOffset.copy(systemViewOffset(sys));
+      w.curSysId = sys.id;
+      w.curLy = sys.ly;
     }
     const dist = Math.max(d.radius * 4.2, 5.5);
     w.followOffset.set(dist * 0.55, dist * 0.5, dist);
@@ -91,7 +94,15 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
       w.follow.id = null;
       w.sysCenter.set(sys.center[0], sys.center[1], sys.center[2]);
       w.homeOffset.copy(systemViewOffset(sys));
-      w.flyTo(w.sysCenter.clone().add(w.homeOffset), w.sysCenter.clone());
+      // rough trip length in light-years (right-angle approximation of the
+      // two systems' distances from Earth); none for same-system flights
+      let tripLy;
+      if (sys.id !== w.curSysId) {
+        tripLy = Math.max(Math.hypot(w.curLy, sys.ly), 0.1);
+        w.curSysId = sys.id;
+        w.curLy = sys.ly;
+      }
+      w.flyTo(w.sysCenter.clone().add(w.homeOffset), w.sysCenter.clone(), tripLy);
     },
   }), []);
 
@@ -575,9 +586,10 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
       st.sqV -= Math.min(vIn, 6) * 0.45; // gentle squash — the knees do the absorbing
     }
 
-    // smooth camera fly (instant under reduced motion)
+    // smooth camera fly (instant under reduced motion); `ly` shows the
+    // light-year odometer counting up over the trip
     let fly = null;
-    function flyTo(pos, target) {
+    function flyTo(pos, target, ly) {
       if (reducedMotion) {
         camera.position.copy(pos);
         controls.target.copy(target);
@@ -586,7 +598,7 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
       }
       // long interstellar hops take longer than local flights
       const dur = THREE.MathUtils.clamp(camera.position.distanceTo(pos) / 300, 1.2, 3.2);
-      fly = { fromP: camera.position.clone(), fromT: controls.target.clone(), toP: pos, toT: target, t: 0, dur };
+      fly = { fromP: camera.position.clone(), fromT: controls.target.clone(), toP: pos, toT: target, t: 0, dur, ly };
     }
 
     // follow: approach = camera flies into a nice framing; afterwards it only
@@ -600,6 +612,8 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
       followOffset: new THREE.Vector3(),
       sysCenter: new THREE.Vector3(), // center of the system being explored
       homeOffset: HOME_POS.clone(), // overview offset sized to that system
+      curSysId: 'sol', // where we are, for the light-year odometer
+      curLy: 0,
     };
     // re-apply the current selection now that the scene exists
     if (selectedRef.current) {
@@ -1148,7 +1162,18 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
         const k = fly.t >= 1 ? 1 : 1 - Math.pow(1 - fly.t, 3);
         camera.position.lerpVectors(fly.fromP, fly.toP, k);
         controls.target.lerpVectors(fly.fromT, fly.toT, k);
+        // light-year odometer counts up with the flight
+        if (fly.ly && lyRef.current) {
+          const v = fly.ly * k;
+          lyRef.current.textContent =
+            `✨ ${v < 10 ? v.toFixed(1) : Math.round(v).toLocaleString()} light-years`;
+          lyRef.current.classList.add('show');
+        }
         if (fly.t >= 1) {
+          if (fly.ly && lyRef.current) {
+            const el = lyRef.current;
+            setTimeout(() => el.classList.remove('show'), 700); // subtle fade-out
+          }
           fly = null;
           onArriveRef.current?.(); // camera at rest — safe to show arrival UI
         }
@@ -1190,12 +1215,15 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
   }, []);
 
   return (
-    <canvas
-      id="space"
-      ref={canvasRef}
-      role="img"
-      aria-label="Animated 3D solar system. Drag to look around, pinch to zoom, tap a planet to learn about it."
-    />
+    <>
+      <canvas
+        id="space"
+        ref={canvasRef}
+        role="img"
+        aria-label="Animated 3D solar system. Drag to look around, pinch to zoom, tap a planet to learn about it."
+      />
+      <div id="ly-counter" ref={lyRef} aria-hidden="true" />
+    </>
   );
 });
 

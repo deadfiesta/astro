@@ -396,6 +396,26 @@ body {
   }
 }
 
+/* ---------- light-year odometer (interstellar flights) ---------- */
+#ly-counter {
+  position: fixed;
+  left: 50%;
+  top: 42%;
+  transform: translateX(-50%);
+  z-index: 4;
+  font-family: var(--display);
+  font-size: clamp(20px, 4vw, 30px);
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  font-variant-numeric: tabular-nums;
+  color: var(--sun);
+  text-shadow: 0 2px 12px rgba(7, 11, 33, 0.9);
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.45s ease;
+}
+#ly-counter.show { opacity: 1; }
+
 /* ---------- system arrival banner ---------- */
 #sys-banner {
   position: fixed;
