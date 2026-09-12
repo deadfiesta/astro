@@ -451,12 +451,14 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
     const { group: astro, body: astroBody, limbs: astroLimbs, swingArm, waveArm, outfits: astroOutfits, visorMat } = buildAstronaut();
 
     // live environment reflections for the visor: a small cube camera at the
-    // helmet captures the real scene (star, planet, flames, starfield)
-    const visorRT = new THREE.WebGLCubeRenderTarget(256, {
+    // helmet captures the real scene (star, planet, flames, starfield).
+    // 128px is plenty for a visor a few dozen pixels wide; the short far
+    // plane frustum-culls the other star systems (all 700+ units away)
+    const visorRT = new THREE.WebGLCubeRenderTarget(128, {
       generateMipmaps: true,
       minFilter: THREE.LinearMipmapLinearFilter,
     });
-    const visorCam = new THREE.CubeCamera(0.5, 2000, visorRT);
+    const visorCam = new THREE.CubeCamera(0.5, 320, visorRT);
     scene.add(visorCam);
     visorMat.envMap = visorRT.texture;
     visorMat.needsUpdate = true;
@@ -1252,16 +1254,26 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
           controls.target.copy(world.current.sysCenter).addScaledVector(tmp.normalize(), 200);
         }
       }
-      // refresh the visor's mirrored surroundings (every 3rd frame, and only
-      // while the astronaut is on screen); hide the astronaut so the visor
-      // doesn't reflect its own helmet
-      if (astro.visible && visorFrame++ % 3 === 0) {
-        visorCam.position.copy(astro.position);
-        visorCam.position.y += astroState.s;
-        kickerA.position.set(astro.position.x - 7, astro.position.y + 9, astro.position.z + 5);
-        kickerB.position.set(astro.position.x + 6, astro.position.y + 4, astro.position.z - 4);
+      // refresh the visor's mirrored surroundings — one cube face per frame
+      // (a full refresh every 6 frames) instead of all six at once, so the
+      // extra scene pass is a small, even cost rather than a periodic spike.
+      // Only while the astronaut is on screen; hide it so the visor doesn't
+      // reflect its own helmet
+      if (astro.visible) {
+        const face = visorFrame++ % 6;
+        if (face === 0) {
+          visorCam.position.copy(astro.position);
+          visorCam.position.y += astroState.s;
+          kickerA.position.set(astro.position.x - 7, astro.position.y + 9, astro.position.z + 5);
+          kickerB.position.set(astro.position.x + 6, astro.position.y + 4, astro.position.z - 4);
+        }
         astro.visible = false;
-        visorCam.update(renderer, scene);
+        // mipmaps are regenerated for the whole cube on every unbind, so only
+        // allow it once per cycle, after the last face (as CubeCamera does)
+        visorRT.texture.generateMipmaps = face === 5;
+        renderer.setRenderTarget(visorRT, face);
+        renderer.render(scene, visorCam.children[face]);
+        renderer.setRenderTarget(null);
         astro.visible = true;
       }
 
