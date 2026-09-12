@@ -1224,22 +1224,22 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
         const k = fly.t >= 1 ? 1 : 1 - Math.pow(1 - fly.t, 3);
         camera.position.lerpVectors(fly.fromP, fly.toP, k);
         controls.target.lerpVectors(fly.fromT, fly.toT, k);
-        // light-year odometer counts up with the flight; the fade-out starts
-        // during the final approach so it has fully vanished by touchdown
+        // light-year odometer counts up with the flight and stays on the
+        // final figure until the camera has come to a complete stop; only
+        // then does it fade out
         if (fly.ly && lyRef.current) {
           const v = fly.ly * k;
           lyRef.current.textContent =
             `✨ ${v < 10 ? v.toFixed(1) : Math.round(v).toLocaleString()} light-years`;
-          const wantShown = (1 - fly.t) * fly.dur > 0.5;
-          if (wantShown !== lyShown) {
-            lyShown = wantShown;
-            motionAnimate(lyRef.current, { opacity: wantShown ? 1 : 0 }, { duration: 0.45, ease: 'easeOut' });
+          if (!lyShown) {
+            lyShown = true;
+            motionAnimate(lyRef.current, { opacity: 1 }, { duration: 0.45, ease: 'easeOut' });
           }
         }
         if (fly.t >= 1) {
           if (lyShown && lyRef.current) {
             lyShown = false;
-            motionAnimate(lyRef.current, { opacity: 0 }, { duration: 0.15 });
+            motionAnimate(lyRef.current, { opacity: 0 }, { duration: 0.6, ease: 'easeOut' });
           }
           fly = null;
           onArriveRef.current?.(); // camera at rest — safe to show arrival UI
