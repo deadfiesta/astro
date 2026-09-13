@@ -1,5 +1,9 @@
 import { Analytics } from '@vercel/analytics/next';
+import { Nunito } from 'next/font/google';
 import './globals.css';
+
+// self-hosted at build time by next/font — no runtime request to Google
+const nunito = Nunito({ subsets: ['latin'], weight: ['700', '800', '900'], variable: '--font-nunito', display: 'swap' });
 
 export const metadata = {
   title: 'Little Orbit',
@@ -21,7 +25,7 @@ export const viewport = {
 
 export default function RootLayout({ children }) {
   return (
-    <html lang="en">
+    <html lang="en" className={nunito.variable}>
       <body>
         {children}
         <Analytics />

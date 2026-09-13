@@ -32,7 +32,7 @@
   --sun: #FFC93C;
   --sun-deep: #FF9F1C;
   --radius: 22px;
-  --display: ui-rounded, "SF Pro Rounded", "Arial Rounded MT Bold", "Hiragino Maru Gothic ProN", system-ui, sans-serif;
+  --display: var(--font-nunito), ui-rounded, "SF Pro Rounded", "Arial Rounded MT Bold", "Hiragino Maru Gothic ProN", system-ui, sans-serif;
 }
 * {
   -webkit-tap-highlight-color: transparent;
@@ -56,6 +56,51 @@ body {
   height: 100%;
   display: block;
   touch-action: none;
+}
+/* shown only when the browser can't give us a WebGL context */
+#gl-fail {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 24px;
+  text-align: center;
+  color: var(--ink);
+  font-size: 16px;
+  line-height: 1.5;
+  z-index: 10;
+}
+#gl-fail p { margin: 0; max-width: 420px; }
+.gl-fail-emoji { font-size: 48px; }
+/* floating body names: real HTML text (via CSS2DRenderer) so they stay
+   crisp at any zoom; taps are hit-tested from the canvas, so the layer
+   never intercepts camera gestures */
+#labels {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 1;
+  overflow: hidden;
+}
+.orbit-label {
+  --c: #FFFFFF; /* per-body colour, set inline */
+  color: #FFFFFF;
+  font-family: var(--display);
+  font-weight: 700;
+  font-size: calc(var(--px, 15) * 1px);
+  line-height: 1;
+  white-space: nowrap;
+  letter-spacing: 0.02em;
+  /* white text with the body's colour as an outline; paint-order keeps the
+     stroke behind the fill so the letters stay clean and readable */
+  -webkit-text-stroke: calc(var(--px, 15) * 0.16px) var(--c);
+  paint-order: stroke fill;
+  text-shadow: 0 0 6px color-mix(in srgb, var(--c) 70%, transparent), 0 1px 3px rgba(7, 11, 33, 0.7);
+  padding: 4px 6px; /* generous tap target without a visible box */
+  will-change: transform, opacity;
 }
 
 /* ---------- top bar ---------- */
@@ -376,62 +421,151 @@ body {
 .pname { font-size: 14px; font-weight: 800; letter-spacing: 0.02em; }
 
 /* ---------- star-system navigation ---------- */
+/* Structure follows the Figma "Left Sidebar": a badge and a list of system
+   rows (icon frame, name, short tag), stacked with no panel chrome of their
+   own. Colours are the design's; type uses the app font. */
 #systems {
+  --sys-blue: #5294FF;
+  --sys-orange: #FEA048;
+  --sys-muted: #8E9AC2;
   position: fixed;
   left: 12px;
   top: calc(max(10px, env(safe-area-inset-top)) + 74px);
+  bottom: calc(max(12px, env(safe-area-inset-bottom)) + 150px); /* clear the planet picker */
   z-index: 5;
+  width: 280px;
+  max-height: calc(100vh - 74px - max(10px, env(safe-area-inset-top)) - 162px);
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 16px;
+  border-radius: 28px;
 }
-#systems-title {
+.sys-head {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  flex: 0 0 auto;
+}
+.sys-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 100px;
+  border: 1px solid var(--sys-orange);
+  background: rgba(254, 160, 72, 0.13);
+  color: var(--sys-orange);
   font-size: 11px;
-  font-weight: 800;
-  letter-spacing: 0.06em;
+  font-weight: 700;
   text-transform: uppercase;
-  color: var(--ink-dim);
-  padding-left: 4px;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
 }
+.sys-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: none;
+  margin: 0 -6px; /* let the focus ring breathe without widening the panel */
+  padding: 0 6px;
+}
+.sys-list::-webkit-scrollbar { display: none; }
 .sys-btn {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
+  width: 100%;
+  flex: 0 0 auto;
   min-height: 44px;
-  padding: 8px 14px 8px 10px;
-  border-radius: 999px;
-  border: 2px solid rgba(170, 180, 224, 0.3);
-  background: var(--panel);
-  color: var(--ink);
+  padding: 10px;
+  border-radius: 16px;
+  border: 1.5px solid transparent;
+  background: rgba(17, 20, 36, 0.72);
+  background-image: linear-gradient(rgba(255, 255, 255, 0.02), rgba(255, 255, 255, 0.02));
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  color: #FFFFFF;
   font-family: var(--display);
-  font-size: 13px;
-  font-weight: 800;
-  letter-spacing: 0.02em;
+  font-size: 12px;
+  font-weight: 600;
+  text-align: left;
   cursor: pointer;
   transition: transform 0.12s ease, border-color 0.12s ease, background 0.12s ease;
 }
-.sys-btn:active { transform: scale(0.94); }
-.sys-btn.active { border-color: var(--sun); background: rgba(255, 201, 60, 0.16); }
+.sys-btn:active { transform: scale(0.97); }
+.sys-btn.active {
+  border-color: var(--sys-blue);
+  background: rgba(82, 148, 255, 0.11);
+  font-weight: 700;
+}
 .sys-btn:focus-visible { outline: 3px solid var(--sun); outline-offset: 2px; }
-.sys-emoji { font-size: 18px; line-height: 1; }
-/* phones: the list is long now — one swipeable row under the top bar */
+/* icon frame: 12px star glyph inside a 4px-padded rounded tile */
+.sys-icon {
+  flex: 0 0 auto;
+  width: 20px;
+  height: 20px;
+  padding: 4px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.1);
+  position: relative;
+}
+.sys-icon::before {
+  content: '';
+  position: absolute;
+  inset: 4px;
+  background: currentColor;
+  -webkit-mask: url('/icons/star.svg') center / contain no-repeat;
+  mask: url('/icons/star.svg') center / contain no-repeat;
+}
+.sys-btn.active .sys-icon {
+  background: rgba(82, 148, 255, 0.2);
+  color: var(--sys-blue);
+}
+.sys-name {
+  flex: 1 1 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.sys-tag {
+  flex: 0 0 auto;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--sys-muted);
+  white-space: nowrap;
+}
+.sys-btn.active .sys-tag { color: var(--sys-blue); }
+/* phones: the panel collapses to one swipeable row of system pills under
+   the top bar; the title block and tip are hidden */
 @media (max-width: 699px) {
   #systems {
     left: 12px;
     right: 12px;
+    bottom: auto;
+    width: auto;
+    max-height: none;
+    gap: 0;
+  }
+  .sys-head { display: none; }
+  .sys-list {
     flex-direction: row;
+    gap: 6px;
+    margin: 0;
+    padding: 0;
     overflow-x: auto;
-    scrollbar-width: none;
-    padding-bottom: 4px;
+    overflow-y: hidden;
   }
-  #systems::-webkit-scrollbar { display: none; }
-  #systems-title { display: none; }
   .sys-btn {
-    flex: 0 0 auto;
+    width: auto;
     min-height: 40px;
-    padding: 6px 12px 6px 9px;
-    font-size: 12px;
+    padding: 6px 12px 6px 8px;
+    border-radius: 999px;
+    white-space: nowrap;
   }
+  .sys-name { flex: 0 0 auto; }
+  .sys-tag { display: none; }
 }
 
 /* ---------- light-year odometer (interstellar flights) ---------- */
@@ -457,16 +591,17 @@ body {
 #sys-banner {
   position: fixed;
   left: 50%;
-  top: calc(max(10px, env(safe-area-inset-top)) + 84px);
+  /* tucked right under the title row so it stays clear of the system */
+  top: calc(max(10px, env(safe-area-inset-top)) + 60px);
   z-index: 4;
   max-width: min(520px, calc(100vw - 24px));
   background: var(--panel);
   border: 2px solid rgba(255, 201, 60, 0.45);
   border-radius: 18px;
-  padding: 10px 18px;
+  padding: 8px 16px;
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: 2px;
   text-align: center;
   pointer-events: none;
 }
@@ -482,9 +617,17 @@ body {
   line-height: 1.4;
   color: var(--ink);
 }
+/* mid-width screens: the 280px system panel owns the left edge, so centre
+   the banner in the space beside it (motion keeps the -50% translate) */
+@media (min-width: 700px) and (max-width: 1099px) {
+  #sys-banner {
+    left: calc(304px + (100vw - 304px) / 2);
+    max-width: min(520px, 100vw - 316px);
+  }
+}
 @media (max-width: 699px) {
   /* below the horizontal system row on phones */
-  #sys-banner { top: calc(max(10px, env(safe-area-inset-top)) + 134px); }
+  #sys-banner { top: calc(max(10px, env(safe-area-inset-top)) + 122px); }
 }
 
 /* ---------- small print ---------- */

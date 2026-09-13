@@ -1,13 +1,14 @@
 'use client';
 
-import { forwardRef, useEffect, useImperativeHandle, useRef } from 'react';
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import { animate as motionAnimate } from 'motion';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+import { CSS2DRenderer, CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
 import { MOON, SYSTEMS } from '@/lib/bodies';
 import {
   makeCanvas, mulberry, rockyTexture, ringTexture, sunTexture, sunGlowTexture,
-  labelSprite, textureFor,
+  textureFor, nebulaSkyTexture, softDotTexture,
 } from '@/lib/textures';
 import { buildAstronaut } from '@/lib/astronaut';
 
@@ -26,6 +27,7 @@ function systemViewOffset(sys) {
 
 // belt/cloud selections fly to a fixed viewpoint instead of following a body
 const FEATURE_VIEWS = {
+  asteroids: new THREE.Vector3(0, 22, 50),
   kuiper: new THREE.Vector3(0, 45, 98),
   oort: new THREE.Vector3(0, 140, 265),
 };
@@ -33,8 +35,10 @@ const FEATURE_VIEWS = {
 /* The whole Three.js scene lives here. React state stays outside;
    the animation loop reads live values through refs. */
 const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused, onSelect, onArrive, onReady }, ref) {
-  const canvasRef = useRef(null);
+  const wrapRef = useRef(null); // the canvas is created per mount, see below
+  const [glFailed, setGlFailed] = useState(false);
   const lyRef = useRef(null); // light-year odometer shown during system trips
+  const labelsRef = useRef(null); // CSS2D layer holding the floating body names
   const world = useRef(null); // { camera, controls, byId, flyTo, followOffset }
 
   const speedRef = useRef(speed);
@@ -110,14 +114,50 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
   }), []);
 
   useEffect(() => {
-    const canvas = canvasRef.current;
+    // A fresh canvas per mount: a WebGL context stays bound to its canvas
+    // even after the renderer is disposed, so reusing one element across
+    // dev hot-reloads / StrictMode re-runs leaks contexts until the browser
+    // refuses to create more ("Error creating WebGL context").
+    const canvas = document.createElement('canvas');
+    canvas.id = 'space';
+    canvas.setAttribute('role', 'img');
+    canvas.setAttribute('aria-label', 'Animated 3D solar system. Drag to look around, pinch to zoom, tap a planet to learn about it.');
+    wrapRef.current.appendChild(canvas);
     const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-    const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+    let renderer;
+    try {
+      renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+    } catch (err) {
+      // no WebGL (disabled, blocklisted GPU, or too many live contexts):
+      // show a friendly note instead of taking the whole page down
+      console.error(err);
+      canvas.remove();
+      setGlFailed(true);
+      return undefined;
+    }
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 
     const scene = new THREE.Scene();
     scene.background = new THREE.Color('#070B21');
+
+    // body names are HTML elements projected over the canvas — real text
+    // stays crisp however far the camera zooms in
+    const labelRenderer = new CSS2DRenderer();
+    labelRenderer.domElement.style.position = 'absolute';
+    labelRenderer.domElement.style.inset = '0';
+    labelsRef.current.appendChild(labelRenderer.domElement);
+    const labels = []; // { obj, el, id, k } — k scales the base font size
+    function makeLabel(text, color, id, k = 1) {
+      const el = document.createElement('div');
+      el.className = 'orbit-label';
+      el.textContent = text;
+      el.style.setProperty('--c', color); // body colour becomes the outline
+      const obj = new CSS2DObject(el);
+      obj.userData.id = id;
+      labels.push({ obj, el, id, k });
+      return obj;
+    }
 
     const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 4000);
     camera.position.copy(HOME_POS);
@@ -137,39 +177,42 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
     // each star system gets its own light (near-flat falloff for vibrancy,
     // with a distance cutoff so systems never light each other)
 
-    // starfield
-    {
-      const rnd = mulberry(2026);
-      const N = 2800;
-      const pos = new Float32Array(N * 3);
-      for (let i = 0; i < N; i++) {
-        const r = 900 + rnd() * 1200; // shell wraps all the star systems
-        const t = rnd() * Math.PI * 2;
-        const p = Math.acos(2 * rnd() - 1);
-        pos[i * 3] = r * Math.sin(p) * Math.cos(t);
-        pos[i * 3 + 1] = r * Math.cos(p);
-        pos[i * 3 + 2] = r * Math.sin(p) * Math.sin(t);
-      }
-      const geo = new THREE.BufferGeometry();
-      geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-      scene.add(new THREE.Points(geo, new THREE.PointsMaterial({ color: '#DDE6FF', size: 1.4, sizeAttenuation: false })));
-    }
+    // sky dome: a painted nebula sky wrapping every star system, drifting
+    // very slowly so the colours feel alive
+    const sky = new THREE.Mesh(
+      new THREE.SphereGeometry(2800, 48, 32),
+      new THREE.MeshBasicMaterial({ map: nebulaSkyTexture(), side: THREE.BackSide, depthWrite: false, fog: false }),
+    );
+    sky.rotation.z = 0.35; // tilt the milky-way band so it cuts the view diagonally
+    scene.add(sky);
 
-    // asteroid belt between Mars and Jupiter
+    // asteroid belt between Mars and Jupiter — soft feathered dots in two
+    // sizes (fine dust plus a few bigger boulders), additive so they glow
     {
       const rnd = mulberry(555);
-      const N = 500;
-      const pos = new Float32Array(N * 3);
-      for (let i = 0; i < N; i++) {
-        const r = 24.5 + rnd() * 2.6;
-        const t = rnd() * Math.PI * 2;
-        pos[i * 3] = r * Math.cos(t);
-        pos[i * 3 + 1] = (rnd() - 0.5) * 0.9;
-        pos[i * 3 + 2] = r * Math.sin(t);
-      }
-      const geo = new THREE.BufferGeometry();
-      geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-      scene.add(new THREE.Points(geo, new THREE.PointsMaterial({ color: '#9C8E7E', size: 1.6, sizeAttenuation: false })));
+      const dot = softDotTexture();
+      const layer = (N, size, opacity, spread) => {
+        const pos = new Float32Array(N * 3);
+        for (let i = 0; i < N; i++) {
+          const r = 24.5 + rnd() * 2.6;
+          const t = rnd() * Math.PI * 2;
+          pos[i * 3] = r * Math.cos(t);
+          pos[i * 3 + 1] = (rnd() - 0.5) * spread;
+          pos[i * 3 + 2] = r * Math.sin(t);
+        }
+        const geo = new THREE.BufferGeometry();
+        geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+        scene.add(new THREE.Points(geo, new THREE.PointsMaterial({
+          color: '#D9B98A', map: dot, size, sizeAttenuation: true,
+          transparent: true, opacity, depthWrite: false, blending: THREE.AdditiveBlending,
+        })));
+      };
+      layer(700, 0.4, 0.45, 0.9); // fine dust
+      layer(120, 0.9, 0.25, 0.7); // a few bigger boulders
+
+      const label = makeLabel('Asteroid Belt', '#D9B98A', 'asteroids', 0.8);
+      label.position.set(0, 2.2, 27.5);
+      scene.add(label);
     }
 
     const bodies = [];
@@ -185,56 +228,62 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
     const introFades = []; // orbit-line materials fading up with the intro
     const nebulae = []; // one spiraling dust cloud per system
 
-    // Kuiper Belt: an icy doughnut of frozen chunks past Neptune
+    // Kuiper Belt: an icy doughnut of frozen chunks past Neptune — soft
+    // feathered dots in two sizes, additive so overlaps glow gently
     {
       const rnd = mulberry(777);
-      const N = 1400;
-      const pos = new Float32Array(N * 3);
-      for (let i = 0; i < N; i++) {
-        const r = 52 + rnd() * 10;
-        const t = rnd() * Math.PI * 2;
-        pos[i * 3] = r * Math.cos(t);
-        pos[i * 3 + 1] = (rnd() - 0.5) * 3.2;
-        pos[i * 3 + 2] = r * Math.sin(t);
-      }
-      const geo = new THREE.BufferGeometry();
-      geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-      scene.add(new THREE.Points(geo, new THREE.PointsMaterial({
-        color: '#A9D6F5', size: 1.5, sizeAttenuation: false, transparent: true, opacity: 0.85,
-      })));
+      const dot = softDotTexture();
+      const layer = (N, size, opacity, spread) => {
+        const pos = new Float32Array(N * 3);
+        for (let i = 0; i < N; i++) {
+          const r = 52 + rnd() * 10;
+          const t = rnd() * Math.PI * 2;
+          pos[i * 3] = r * Math.cos(t);
+          pos[i * 3 + 1] = (rnd() - 0.5) * spread;
+          pos[i * 3 + 2] = r * Math.sin(t);
+        }
+        const geo = new THREE.BufferGeometry();
+        geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+        scene.add(new THREE.Points(geo, new THREE.PointsMaterial({
+          color: '#A9D6F5', map: dot, size, sizeAttenuation: true,
+          transparent: true, opacity, depthWrite: false, blending: THREE.AdditiveBlending,
+        })));
+      };
+      layer(1100, 0.55, 0.45, 3.2); // fine icy grains
+      layer(260, 1.4, 0.22, 2.4); // a few larger, fainter chunks
 
-      const label = labelSprite('Kuiper Belt', '#A9D6F5');
-      label.scale.set(12, 3, 1);
+      const label = makeLabel('Kuiper Belt', '#A9D6F5', 'kuiper', 0.85);
       label.position.set(0, 5, 57);
-      label.userData.id = 'kuiper';
-      pickables.push(label);
       scene.add(label);
     }
 
-    // Oort Cloud: a faint spherical bubble wrapping the whole solar system
+    // Oort Cloud: a faint spherical bubble wrapping the whole solar system —
+    // the same soft feathered dots as the Kuiper Belt, thinner and dimmer
     {
       const rnd = mulberry(31415);
-      const N = 3000;
-      const pos = new Float32Array(N * 3);
-      for (let i = 0; i < N; i++) {
-        const r = 120 + rnd() * 40;
-        const t = rnd() * Math.PI * 2;
-        const p = Math.acos(2 * rnd() - 1);
-        pos[i * 3] = r * Math.sin(p) * Math.cos(t);
-        pos[i * 3 + 1] = r * Math.cos(p);
-        pos[i * 3 + 2] = r * Math.sin(p) * Math.sin(t);
-      }
-      const geo = new THREE.BufferGeometry();
-      geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-      scene.add(new THREE.Points(geo, new THREE.PointsMaterial({
-        color: '#9FB8D8', size: 1.1, sizeAttenuation: false, transparent: true, opacity: 0.55,
-      })));
+      const dot = softDotTexture();
+      const layer = (N, size, opacity) => {
+        const pos = new Float32Array(N * 3);
+        for (let i = 0; i < N; i++) {
+          const r = 120 + rnd() * 40;
+          const t = rnd() * Math.PI * 2;
+          const p = Math.acos(2 * rnd() - 1);
+          pos[i * 3] = r * Math.sin(p) * Math.cos(t);
+          pos[i * 3 + 1] = r * Math.cos(p);
+          pos[i * 3 + 2] = r * Math.sin(p) * Math.sin(t);
+        }
+        const geo = new THREE.BufferGeometry();
+        geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+        scene.add(new THREE.Points(geo, new THREE.PointsMaterial({
+          color: '#9FB8D8', map: dot, size, sizeAttenuation: true,
+          transparent: true, opacity, depthWrite: false, blending: THREE.AdditiveBlending,
+        })));
+      };
+      layer(2400, 1.2, 0.42); // fine distant specks
+      layer(500, 2.8, 0.2); // sparse larger, fainter puffs
 
-      const label = labelSprite('Oort Cloud', '#9FB8D8');
-      label.scale.set(18, 4.5, 1);
+      const label = makeLabel('Oort Cloud', '#9FB8D8', 'oort', 0.9);
       label.position.set(0, 50, 128);
-      label.userData.id = 'oort';
-      pickables.push(label);
       scene.add(label);
     }
 
@@ -334,11 +383,9 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
       const pivot = new THREE.Group(); // positioned on the orbit
       pivot.add(spinGroup);
 
-      const label = labelSprite(b.name, b.color);
+      const label = makeLabel(b.name, b.color, b.id);
       label.position.y = b.radius + (b.hasRings ? 2.6 : 1.8);
-      label.userData.id = b.id;
       pivot.add(label);
-      pickables.push(label);
 
       if (b.blackHole) {
         // silhouette look: tight warm rim halo behind the black sphere,
@@ -405,11 +452,8 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
         moonMesh.userData.id = 'moon';
         pickables.push(moonMesh);
 
-        const moonLabel = labelSprite('Moon', MOON.color);
-        moonLabel.scale.set(2.4, 0.6, 1);
+        const moonLabel = makeLabel('Moon', MOON.color, 'moon', 0.65);
         moonLabel.position.y = 0.7;
-        moonLabel.userData.id = 'moon';
-        pickables.push(moonLabel);
         moonMesh.add(moonLabel);
         moonLabelRef = moonLabel;
 
@@ -752,6 +796,15 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
       downAt = null;
       if (moved > 12 || dt > 600) return; // it was a drag, not a tap
 
+      // names first: they're HTML, so test their screen rects directly
+      for (const l of labels) {
+        if (l.el.style.display === 'none' || l.el.style.opacity === '0') continue;
+        const r = l.el.getBoundingClientRect();
+        if (e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom) {
+          onSelectRef.current?.(l.id);
+          return;
+        }
+      }
       setPointer(e);
       const hits = raycaster.intersectObjects(pickables, false);
       if (hits.length) onSelectRef.current?.(hits[0].object.userData.id);
@@ -766,6 +819,7 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
     function fit() {
       const w = canvas.clientWidth, h = canvas.clientHeight;
       renderer.setSize(w, h, false);
+      labelRenderer.setSize(w, h);
       camera.aspect = w / h;
       camera.updateProjectionMatrix();
       view.side = window.matchMedia('(min-width: 700px)').matches;
@@ -792,6 +846,7 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
     function animate() {
       raf = requestAnimationFrame(animate);
       const dt = Math.min(clock.getDelta(), 0.05);
+      if (!reducedMotion) sky.rotation.y += dt * 0.004;
       const spd = pausedRef.current ? 0 : speedRef.current;
 
       for (const b of bodies) {
@@ -808,14 +863,23 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
         intro.t += dt;
         const T = intro.t;
         const settle = THREE.MathUtils.clamp(T / 1.9, 0, 1);
-        const eN = 1 - Math.pow(1 - settle, 2.2); // collapse eases in hard, lands soft
-        // brighten fast, then dissipate as the planets take over
-        const glow = Math.min(T / 0.3, 1) * (1 - THREE.MathUtils.clamp((T - 1.55) / 0.75, 0, 1));
+        // ease-in-out cubic: the collapse starts gently, rushes through the
+        // middle and glides onto its targets
+        const eN = settle < 0.5
+          ? 4 * settle * settle * settle
+          : 1 - Math.pow(-2 * settle + 2, 3) / 2;
+        // swirl speed follows a bell on top of a steady drift: slow start,
+        // fastest mid-collapse, then a visible lazy spin that keeps turning
+        // while the leftover dust fades out
+        const spin = 0.7 + 2.6 * Math.sin(Math.PI * settle);
+        // glow eases in, then dissipates as the planets take over
+        const gIn = THREE.MathUtils.smoothstep(T, 0, 0.5);
+        const glow = gIn * (1 - THREE.MathUtils.clamp((T - 1.55) / 0.75, 0, 1));
         for (const nb of nebulae) {
           const pos = nb.geo.attributes.position.array;
           for (let i = 0; i < nb.parts.length; i++) {
             const p = nb.parts[i];
-            p.a += p.w * dt * (1 + 2.5 * (1 - eN)); // churns fast, calms as it settles
+            p.a += p.w * dt * spin;
             const r = THREE.MathUtils.lerp(p.r0, p.rT, eN);
             pos[i * 3] = Math.cos(p.a) * r;
             pos[i * 3 + 1] = p.y0 * (1 - eN); // the puffy cloud flattens into a disk
@@ -1278,6 +1342,20 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
       }
 
       renderer.render(scene, camera);
+
+      // names: shrink with distance (clamped so they stay legible), fade out
+      // beyond the far zoom limit so other systems' names don't clutter, and
+      // stay hidden until the formation intro has finished
+      for (const l of labels) {
+        l.obj.getWorldPosition(tmp);
+        const d = camera.position.distanceTo(tmp);
+        const px = THREE.MathUtils.clamp(1300 / d, 10, 20) * l.k;
+        const far = THREE.MathUtils.clamp((300 - d) / 60, 0, 1);
+        const a = intro.done ? far : 0;
+        l.el.style.setProperty('--px', px.toFixed(1));
+        l.el.style.opacity = a === 0 ? '0' : a.toFixed(2);
+      }
+      labelRenderer.render(scene, camera);
     }
     animate();
 
@@ -1290,6 +1368,7 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
       canvas.removeEventListener('pointercancel', onUp);
       controls.removeEventListener('start', onControlStart);
       controls.dispose();
+      labelRenderer.domElement.remove();
       visorRT.dispose();
       scene.traverse((obj) => {
         obj.geometry?.dispose?.();
@@ -1301,18 +1380,22 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
         }
       });
       renderer.dispose();
+      renderer.forceContextLoss(); // actually free the GPU context, not just JS handles
+      canvas.remove();
       world.current = null;
     };
   }, []);
 
   return (
     <>
-      <canvas
-        id="space"
-        ref={canvasRef}
-        role="img"
-        aria-label="Animated 3D solar system. Drag to look around, pinch to zoom, tap a planet to learn about it."
-      />
+      <div ref={wrapRef} />
+      {glFailed && (
+        <div id="gl-fail" role="alert">
+          <span className="gl-fail-emoji" aria-hidden="true">🔭</span>
+          <p>Little Orbit needs 3D graphics (WebGL) to run. Try reloading the page, closing other tabs, or turning on hardware acceleration in your browser.</p>
+        </div>
+      )}
+      <div id="labels" ref={labelsRef} aria-hidden="true" />
       <div id="ly-counter" ref={lyRef} aria-hidden="true" />
     </>
   );
