@@ -115,6 +115,10 @@ const SolarSystem = forwardRef(function SolarSystem({
   }, [flying]);
 
   useImperativeHandle(ref, () => ({
+    // top-down snapshot for the fly-mode mini map (null when not flying)
+    mapSnapshot() {
+      return world.current?.mapSnapshot() ?? null;
+    },
     resetView() {
       const w = world.current;
       if (!w) return;
@@ -767,6 +771,36 @@ const SolarSystem = forwardRef(function SolarSystem({
       homeOffset: HOME_POS.clone(), // overview offset sized to that system
       curSysId: 'sol', // where we are, for the light-year odometer
       curLy: 0,
+      // where the shuttle is, which way it points, every star, and the live
+      // planet positions of the nearest system — enough for a radar view.
+      // Reuses one object so the map's redraw loop allocates nothing
+      mapSnapshot() {
+        if (!flight.on) return null;
+        const snap = mapSnap;
+        snap.ship.x = shuttle.group.position.x;
+        snap.ship.y = shuttle.group.position.y;
+        snap.ship.z = shuttle.group.position.z;
+        snap.ship.heading = flight.heading;
+        snap.ship.speed = flight.speed;
+        let nearest = null;
+        let nearestD = Infinity;
+        for (const sys of SYSTEMS) {
+          const d = Math.hypot(sys.center[0] - snap.ship.x, sys.center[2] - snap.ship.z);
+          if (d < nearestD) { nearestD = d; nearest = sys; }
+        }
+        snap.nearest = nearest;
+        snap.nearestD = nearestD;
+        snap.bodies.length = 0;
+        if (nearest) {
+          for (const b of nearest.bodies) {
+            const ent = byId[b.id];
+            if (!ent) continue;
+            ent.pivot.getWorldPosition(tmpDir);
+            snap.bodies.push({ x: tmpDir.x, z: tmpDir.z, r: b.radius, color: b.color, star: b.orbit === 0 || !!b.star });
+          }
+        }
+        return snap;
+      },
       startFlight() {
         if (flight.on) return;
         fly = null;
@@ -820,6 +854,7 @@ const SolarSystem = forwardRef(function SolarSystem({
       },
     };
     const tmpDir = new THREE.Vector3();
+    const mapSnap = { ship: { x: 0, y: 0, z: 0, heading: 0, speed: 0 }, nearest: null, nearestD: 0, bodies: [] };
     // scene remounted (dev hot-reload) mid-flight: pick the controls back up
     if (flyingRef.current) world.current.startFlight();
     // re-apply the current selection now that the scene exists

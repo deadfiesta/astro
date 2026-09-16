@@ -864,3 +864,49 @@ body {
   .deck-hint-keys { display: none; }
   .tilt-btn { min-height: 44px; padding: 0 12px; font-size: 15px; }
 }
+
+/* ---------- fly mode: mini map ---------- */
+/* a round radar under the top bar, on the right; the shuttle sits at the
+   centre and the view zooms itself between planets and whole stars */
+#minimap {
+  position: fixed;
+  right: 12px;
+  top: calc(max(10px, env(safe-area-inset-top)) + 74px);
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 8px 10px;
+  border-radius: 24px;
+  border: 2px solid rgba(170, 180, 224, 0.35);
+  background: var(--panel);
+  color: var(--ink);
+  font-family: var(--display);
+  pointer-events: none;
+}
+#minimap canvas {
+  width: 150px;
+  height: 150px;
+  border-radius: 50%;
+  display: block;
+}
+.minimap-caption {
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.minimap-caption .dist {
+  color: var(--ink-dim);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+@media (max-width: 479px) {
+  #minimap canvas { width: 112px; height: 112px; }
+  #minimap { padding: 6px 6px 8px; border-radius: 20px; }
+  .minimap-caption { font-size: 12px; max-width: 112px; }
+}

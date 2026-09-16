@@ -9,6 +9,7 @@ import PlanetPicker from '@/components/PlanetPicker';
 import ControlBar from '@/components/ControlBar';
 import SystemPicker from '@/components/SystemPicker';
 import FlightDeck from '@/components/FlightDeck';
+import MiniMap from '@/components/MiniMap';
 
 // Three.js needs the browser — skip server rendering entirely
 const SolarSystem = dynamic(() => import('@/components/SolarSystem'), { ssr: false });
@@ -94,6 +95,7 @@ export default function Home() {
   const land = useCallback(() => setFlying(false), []);
   // the scene reports which star system the shuttle came down at
   const onFlightLand = useCallback((sys) => setSystemId(sys.id), []);
+  const getMap = useCallback(() => sceneRef.current?.mapSnapshot() ?? null, []);
 
   const body = CARDS.find((b) => b.id === selectedId) ?? null;
   const system = SYSTEMS.find((s) => s.id === systemId) ?? SYSTEMS[0];
@@ -124,6 +126,7 @@ export default function Home() {
         <SystemPicker visible={uiVisible && !flying} systemId={systemId} onPick={goToSystem} />
         <PlanetPicker visible={uiVisible && !flying} system={system} selectedId={selectedId} onSelect={select} />
         <FlightDeck visible={uiVisible && flying} input={flightInput} onLand={land} />
+        <MiniMap visible={uiVisible && flying} getMap={getMap} />
         <motion.div
           id="credit"
           initial={{ opacity: 0 }}
