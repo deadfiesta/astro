@@ -984,9 +984,12 @@ const SolarSystem = forwardRef(function SolarSystem({
     canvas.addEventListener('pointercancel', onUp);
 
     // sizing; also decides where the fact card docks (side vs bottom sheet)
-    const view = { side: false };
+    const view = { side: false, w: 0, h: 0 };
     function fit() {
       const w = canvas.clientWidth, h = canvas.clientHeight;
+      if (!w || !h) return; // mid-rotation the box can read as 0×0 for a frame
+      view.w = w;
+      view.h = h;
       renderer.setSize(w, h, false);
       labelRenderer.setSize(w, h);
       camera.aspect = w / h;
@@ -995,7 +998,16 @@ const SolarSystem = forwardRef(function SolarSystem({
       view.side = window.matchMedia('(min-width: 700px)').matches;
     }
     fit();
+    // phones fire `resize` on rotation *before* the new layout has settled,
+    // so a single listener can lock in the old aspect and squash the scene.
+    // Belt and braces: the window event, a ResizeObserver on the canvas
+    // (fires after layout with the real box), and a per-frame check in the
+    // render loop that refits the moment the CSS size differs from the
+    // drawing buffer's
     window.addEventListener('resize', fit);
+    window.addEventListener('orientationchange', fit);
+    const sizeWatch = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(fit) : null;
+    sizeWatch?.observe(canvas);
 
     // animation loop
     const clock = new THREE.Clock();
@@ -1016,6 +1028,9 @@ const SolarSystem = forwardRef(function SolarSystem({
     function animate() {
       raf = requestAnimationFrame(animate);
       const dt = Math.min(clock.getDelta(), 0.05);
+      // catch any size change the events missed (rotation, split view,
+      // browser chrome sliding away) — cheap: two layout reads per frame
+      if (canvas.clientWidth !== view.w || canvas.clientHeight !== view.h) fit();
       if (!reducedMotion) sky.rotation.y += dt * 0.004;
       const spd = pausedRef.current ? 0 : speedRef.current;
 
@@ -1631,6 +1646,8 @@ const SolarSystem = forwardRef(function SolarSystem({
     return () => {
       cancelAnimationFrame(raf);
       window.removeEventListener('resize', fit);
+      window.removeEventListener('orientationchange', fit);
+      sizeWatch?.disconnect();
       canvas.removeEventListener('pointerdown', onDown);
       canvas.removeEventListener('pointermove', onMove);
       canvas.removeEventListener('pointerup', onUp);
