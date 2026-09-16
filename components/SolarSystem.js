@@ -11,7 +11,11 @@ import {
   textureFor, nebulaSkyTexture, softDotTexture,
 } from '@/lib/textures';
 import { buildAstronaut } from '@/lib/astronaut';
-import { buildShuttle } from '@/lib/shuttle';
+import { buildShuttle, SHUTTLE_SCALE } from '@/lib/shuttle';
+
+// chase-camera distances were tuned for the full-size model; this shrinks
+// them with the ship (a little less than SHUTTLE_SCALE, see the flight block)
+const CHASE_SCALE = 0.45;
 
 const HOME_POS = new THREE.Vector3(0, 42, 70);
 const HOME_TARGET = new THREE.Vector3(0, 0, 0);
@@ -567,7 +571,7 @@ const SolarSystem = forwardRef(function SolarSystem({
       generateMipmaps: true,
       minFilter: THREE.LinearMipmapLinearFilter,
     });
-    const hullCam = new THREE.CubeCamera(2, 1500, hullRT);
+    const hullCam = new THREE.CubeCamera(1.5 * SHUTTLE_SCALE, 1500, hullRT);
     hullCam.children.forEach((c) => c.layers.enable(1)); // sees the kickers too
     scene.add(hullCam);
     astro.visible = false;
@@ -830,7 +834,7 @@ const SolarSystem = forwardRef(function SolarSystem({
         flight.pitchIn = 0;
         flight.bankAngle = 0;
         flight.camBlend = 0;
-        shuttle.group.position.copy(camera.position).addScaledVector(tmpDir, 14);
+        shuttle.group.position.copy(camera.position).addScaledVector(tmpDir, 14 * SHUTTLE_SCALE);
         shuttle.group.rotation.set(flight.pitch, flight.heading, 0, 'YXZ');
         shuttle.bank.rotation.z = 0;
         shuttle.setThrust(0);
@@ -1442,18 +1446,21 @@ const SolarSystem = forwardRef(function SolarSystem({
         // bank into turns, nose-wobble with the throttle
         flight.bankAngle += (flight.yawIn * 0.55 - flight.bankAngle) * Math.min(1, dt * 4);
         shuttle.bank.rotation.z = flight.bankAngle;
-        shuttle.bank.position.y = Math.sin(flight.time * 2.3) * 0.04;
+        shuttle.bank.position.y = Math.sin(flight.time * 2.3) * 0.04 * SHUTTLE_SCALE;
         shuttle.setThrust(inp.throttle, flight.time);
 
         // chase camera: behind and a little above, looking past the nose;
         // it slides into place over the first second after take-off
         flight.camBlend = Math.min(1, flight.camBlend + dt * 1.4);
-        const back = 15 + flight.speed * 0.06;
-        tmp.set(0, 4.2, back).applyQuaternion(shuttle.group.quaternion).add(shuttle.group.position);
+        // ...framed for the ship's size. The camera comes in less than the
+        // ship shrank (0.45 vs 1/3), so the shuttle also *looks* smaller on
+        // screen and more of the sky and planets show around it
+        const back = (15 + flight.speed * 0.06) * CHASE_SCALE;
+        tmp.set(0, 4.2 * CHASE_SCALE, back).applyQuaternion(shuttle.group.quaternion).add(shuttle.group.position);
         const camEase = reducedMotion ? 1 : Math.min(1, dt * (2.5 + flight.camBlend * 4));
         camera.position.lerp(tmp, camEase);
-        tmp2.copy(shuttle.group.position).addScaledVector(tmpDir, -9);
-        tmp2.y += 1.0;
+        tmp2.copy(shuttle.group.position).addScaledVector(tmpDir, -9 * CHASE_SCALE);
+        tmp2.y += 1.0 * CHASE_SCALE;
         controls.target.lerp(tmp2, camEase);
         camera.up.set(0, 1, 0);
         camera.lookAt(controls.target);
@@ -1542,9 +1549,9 @@ const SolarSystem = forwardRef(function SolarSystem({
         const face = visorFrame++ % 6;
         if (face === 0) {
           hullCam.position.copy(shuttle.group.position);
-          tmp.set(-9, 12, 3).applyQuaternion(shuttle.group.quaternion);
+          tmp.set(-9, 12, 3).multiplyScalar(SHUTTLE_SCALE).applyQuaternion(shuttle.group.quaternion);
           kickerA.position.copy(shuttle.group.position).add(tmp);
-          tmp.set(8, 5, -6).applyQuaternion(shuttle.group.quaternion);
+          tmp.set(8, 5, -6).multiplyScalar(SHUTTLE_SCALE).applyQuaternion(shuttle.group.quaternion);
           kickerB.position.copy(shuttle.group.position).add(tmp);
         }
         shuttle.group.visible = false; // no reflecting its own hull
