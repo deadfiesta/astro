@@ -741,6 +741,7 @@ const SolarSystem = forwardRef(function SolarSystem({
     // light-year odometer counting up over the trip
     let fly = null;
     let lyShown = false;
+    let labelDim = 1; // 0..1 multiplier on label opacity, eased per frame
     function flyTo(pos, target, ly) {
       if (reducedMotion) {
         camera.position.copy(pos);
@@ -1501,6 +1502,14 @@ const SolarSystem = forwardRef(function SolarSystem({
 
       renderer.render(scene, camera);
 
+      // interstellar trips (the ones with a light-year figure): names drop
+      // out as the flight begins and only return over the final stretch, once
+      // the eased camera is nearly settled on the new system
+      const dimTarget = fly && fly.ly
+        ? THREE.MathUtils.clamp((fly.t - 0.78) / 0.22, 0, 1)
+        : 1;
+      labelDim += (dimTarget - labelDim) * Math.min(1, dt * (dimTarget < labelDim ? 7 : 4));
+
       // names: shrink with distance (clamped so they stay legible), fade out
       // beyond the far zoom limit so other systems' names don't clutter, and
       // stay hidden until the formation intro has finished
@@ -1509,9 +1518,9 @@ const SolarSystem = forwardRef(function SolarSystem({
         const d = camera.position.distanceTo(tmp);
         const px = THREE.MathUtils.clamp(1300 / d, 10, 20) * l.k;
         const far = THREE.MathUtils.clamp((300 - d) / 60, 0, 1);
-        const a = intro.done ? far : 0;
+        const a = intro.done ? far * labelDim : 0;
         l.el.style.setProperty('--px', px.toFixed(1));
-        l.el.style.opacity = a === 0 ? '0' : a.toFixed(2);
+        l.el.style.opacity = a < 0.01 ? '0' : a.toFixed(2);
       }
       labelRenderer.render(scene, camera);
     }

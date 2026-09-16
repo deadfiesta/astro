@@ -494,6 +494,9 @@ body {
   gap: 8px;
   flex: 1 1 auto;
   min-height: 0;
+  /* rows grow to use the full height down to the planet picker; once they
+     hit their cap, the leftover goes into the gaps between them */
+  justify-content: space-between;
   overflow-y: auto;
   scrollbar-width: none;
   margin: 0 -6px; /* let the focus ring breathe without widening the panel */
@@ -505,8 +508,9 @@ body {
   align-items: center;
   gap: 10px;
   width: 100%;
-  flex: 0 0 auto;
+  flex: 1 1 44px; /* fill the column; shrinks back to a scroll list when short */
   min-height: 44px;
+  max-height: 72px;
   padding: 10px;
   border-radius: 16px;
   border: 1.5px solid transparent;
@@ -584,8 +588,11 @@ body {
     overflow-x: auto;
     overflow-y: hidden;
   }
+  .sys-list { justify-content: flex-start; }
   .sys-btn {
     width: auto;
+    flex: 0 0 auto;
+    max-height: none;
     min-height: 40px;
     padding: 6px 12px 6px 8px;
     border-radius: 999px;
