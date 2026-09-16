@@ -851,35 +851,7 @@ body {
   .deck-hint { display: none; }
 }
 
-/* tilt steering toggle (phones/tablets only) sits above the Land button */
-.tilt-btn {
-  min-height: 48px;
-  padding: 0 18px;
-  border-radius: 16px;
-  border: 2px solid rgba(170, 180, 224, 0.35);
-  background: var(--panel);
-  color: var(--ink);
-  font-family: var(--display);
-  font-size: 17px;
-  font-weight: 800;
-  cursor: pointer;
-  transition: transform 0.12s ease, border-color 0.12s ease, background 0.12s ease;
-}
-.tilt-btn:active { transform: scale(0.94); }
-.tilt-btn.active {
-  border-color: var(--sun);
-  background: rgba(255, 201, 60, 0.18);
-  color: var(--sun);
-}
-.tilt-btn:focus-visible { outline: 3px solid var(--sun); outline-offset: 2px; }
 .deck-hint { min-height: 1.2em; text-align: center; max-width: 180px; }
-.deck-hint-warn { color: #FFB0A0; }
-@media (max-width: 479px) {
-  /* keep the hint on phones now that it explains tilt, but not the key tips */
-  .deck-hint { display: block; }
-  .deck-hint-keys { display: none; }
-  .tilt-btn { min-height: 44px; padding: 0 12px; font-size: 15px; }
-}
 
 /* ---------- fly mode: mini map ---------- */
 /* a round radar under the top bar, on the right; the shuttle sits at the
