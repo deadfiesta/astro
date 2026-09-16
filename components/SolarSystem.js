@@ -564,7 +564,7 @@ const SolarSystem = forwardRef(function SolarSystem({
     // the fly-mode shuttle: hidden until the pilot takes the controls
     const shuttle = buildShuttle();
     shuttle.group.visible = false;
-    scene.add(shuttle.group);
+    scene.add(shuttle.group, shuttle.exhaust); // exhaust trails in world space
     const flight = {
       on: false,
       heading: 0, // yaw, rad
@@ -821,6 +821,7 @@ const SolarSystem = forwardRef(function SolarSystem({
         shuttle.group.rotation.set(flight.pitch, flight.heading, 0, 'YXZ');
         shuttle.bank.rotation.z = 0;
         shuttle.setThrust(0);
+        shuttle.resetExhaust(); // no streak from wherever it was parked
         shuttle.group.visible = true;
         flight.on = true;
       },
@@ -961,6 +962,7 @@ const SolarSystem = forwardRef(function SolarSystem({
       labelRenderer.setSize(w, h);
       camera.aspect = w / h;
       camera.updateProjectionMatrix();
+      shuttle.setViewport(renderer.domElement.height); // exhaust sprite px scale
       view.side = window.matchMedia('(min-width: 700px)').matches;
     }
     fit();
@@ -1443,6 +1445,9 @@ const SolarSystem = forwardRef(function SolarSystem({
         camera.up.set(0, 1, 0);
         camera.lookAt(controls.target);
       }
+      // the engine plume keeps burning out for a moment after landing, so
+      // step it whenever anything is still alight, not only while flying
+      shuttle.updateExhaust(dt);
 
       // camera follow: the approach flies into a framing that keeps the body
       // clear of the fact card; after that the camera only translates with
