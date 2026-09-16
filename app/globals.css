@@ -652,3 +652,151 @@ body {
   #picker { padding-bottom: calc(38px + env(safe-area-inset-bottom)); }
   #card { bottom: calc(138px + env(safe-area-inset-bottom)); }
 }
+
+/* ---------- fly mode: the shuttle's flight deck ---------- */
+/* three zones across the bottom: throttle (left), land button (middle),
+   steering D-pad (right). Big hold-to-steer buttons for small thumbs. */
+#flight-deck {
+  position: fixed;
+  left: 12px;
+  right: 12px;
+  bottom: calc(26px + env(safe-area-inset-bottom));
+  z-index: 6;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+  pointer-events: none;
+  font-family: var(--display);
+  touch-action: none;
+}
+#flight-deck > * { pointer-events: auto; }
+
+.throttle {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 10px;
+  border-radius: 22px;
+  border: 2px solid rgba(170, 180, 224, 0.35);
+  background: var(--panel);
+  color: var(--ink);
+}
+.throttle-icon { font-size: 22px; line-height: 1; }
+.throttle-readout {
+  font-size: 14px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  color: var(--sun);
+  min-width: 42px;
+  text-align: center;
+}
+/* a vertical range: rotate the horizontal control and size it by hand */
+.throttle-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  writing-mode: vertical-lr;
+  direction: rtl;
+  width: 10px;
+  height: 150px;
+  border-radius: 999px;
+  background: linear-gradient(0deg, var(--sun-deep), rgba(170, 180, 224, 0.3));
+  outline: none;
+  cursor: pointer;
+  touch-action: none;
+}
+.throttle-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: linear-gradient(180deg, var(--sun), var(--sun-deep));
+  border: 2px solid rgba(58, 37, 0, 0.55);
+  cursor: pointer;
+}
+.throttle-slider::-moz-range-thumb {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: linear-gradient(180deg, var(--sun), var(--sun-deep));
+  border: 2px solid rgba(58, 37, 0, 0.55);
+  cursor: pointer;
+}
+.throttle-slider:focus-visible { outline: 3px solid var(--sun); outline-offset: 4px; }
+
+.deck-mid {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  align-self: flex-end;
+}
+.land-btn {
+  min-height: 56px;
+  padding: 0 22px;
+  border-radius: 18px;
+  border: 2px solid rgba(170, 180, 224, 0.35);
+  background: var(--panel);
+  color: var(--ink);
+  font-family: var(--display);
+  font-size: 20px;
+  font-weight: 800;
+  cursor: pointer;
+  transition: transform 0.12s ease, border-color 0.12s ease;
+}
+.land-btn:active { transform: scale(0.94); }
+.land-btn:focus-visible { outline: 3px solid var(--sun); outline-offset: 2px; }
+.deck-hint {
+  font-size: 12px;
+  font-weight: 700;
+  color: rgba(170, 180, 224, 0.85);
+  text-shadow: 0 1px 3px rgba(7, 11, 33, 0.9);
+}
+
+.dpad {
+  display: grid;
+  grid-template-columns: repeat(3, 62px);
+  grid-template-rows: repeat(3, 62px);
+  gap: 6px;
+  padding: 8px;
+  border-radius: 26px;
+  border: 2px solid rgba(170, 180, 224, 0.35);
+  background: var(--panel);
+}
+.pad-btn {
+  border-radius: 16px;
+  border: 2px solid rgba(170, 180, 224, 0.28);
+  background: var(--space-2);
+  color: var(--ink);
+  font-size: 24px;
+  line-height: 1;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  touch-action: none;
+  transition: transform 0.08s ease, background 0.08s ease, border-color 0.08s ease;
+}
+.pad-btn.held, .pad-btn:active {
+  transform: scale(0.94);
+  background: rgba(255, 201, 60, 0.22);
+  border-color: var(--sun);
+}
+.pad-btn:focus-visible { outline: 3px solid var(--sun); outline-offset: 2px; }
+.pad-pitch-pos { grid-column: 2; grid-row: 1; }
+.pad-yaw-neg { grid-column: 1; grid-row: 2; }
+.pad-center { grid-column: 2; grid-row: 2; display: grid; place-items: center; font-size: 26px; }
+.pad-yaw-pos { grid-column: 3; grid-row: 2; }
+.pad-pitch-neg { grid-column: 2; grid-row: 3; }
+
+@media (max-width: 479px) {
+  .dpad { grid-template-columns: repeat(3, 52px); grid-template-rows: repeat(3, 52px); }
+  .pad-btn { font-size: 20px; }
+  .throttle-slider { height: 120px; }
+  .land-btn { min-height: 50px; padding: 0 14px; font-size: 17px; }
+  .deck-hint { display: none; }
+}

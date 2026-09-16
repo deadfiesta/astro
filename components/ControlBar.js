@@ -4,7 +4,7 @@ import { motion } from 'motion/react';
 
 /* One slider rules the clock: far left is paused, far right is the old
    rocket speed (3x), with turtle/normal pace living along the way. */
-export default function ControlBar({ visible, speed, onSpeed, onReset }) {
+export default function ControlBar({ visible, speed, onSpeed, onReset, flying, onFly }) {
   return (
     <motion.div
       className={`topbar${visible ? '' : ' ui-off'}`}
@@ -28,6 +28,12 @@ export default function ControlBar({ visible, speed, onSpeed, onReset }) {
           />
           <span className="speed-icon" aria-hidden="true">🚀</span>
         </div>
+        <button
+          className={`ctl${flying ? ' active' : ''}`}
+          aria-label={flying ? 'Land the shuttle' : 'Fly a space shuttle'}
+          aria-pressed={flying}
+          onClick={onFly}
+        >🛸</button>
         <button className="ctl" aria-label="See the whole solar system" onClick={onReset}>🌌</button>
       </div>
     </motion.div>

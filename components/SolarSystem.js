@@ -11,6 +11,7 @@ import {
   textureFor, nebulaSkyTexture, softDotTexture,
 } from '@/lib/textures';
 import { buildAstronaut } from '@/lib/astronaut';
+import { buildShuttle } from '@/lib/shuttle';
 
 const HOME_POS = new THREE.Vector3(0, 42, 70);
 const HOME_TARGET = new THREE.Vector3(0, 0, 0);
@@ -34,7 +35,18 @@ const FEATURE_VIEWS = {
 
 /* The whole Three.js scene lives here. React state stays outside;
    the animation loop reads live values through refs. */
-const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused, onSelect, onArrive, onReady }, ref) {
+// fly mode tuning: the shuttle turns at these rates (rad/s) at full stick and
+// cruises at FLIGHT_MAX_SPEED (units/s) at full throttle — Sol's Kuiper Belt
+// is ~60 units out and the neighbouring stars ~1000, so a full-throttle hop
+// between systems takes about fifteen seconds
+const FLIGHT_YAW_RATE = 1.15;
+const FLIGHT_PITCH_RATE = 0.95;
+const FLIGHT_MAX_SPEED = 70;
+const FLIGHT_BOUND = 1500; // soft edge of the map, from the origin
+
+const SolarSystem = forwardRef(function SolarSystem({
+  selectedId, speed, paused, flying, flightInput, onSelect, onArrive, onReady, onFlightLand,
+}, ref) {
   const wrapRef = useRef(null); // the canvas is created per mount, see below
   const [glFailed, setGlFailed] = useState(false);
   const lyRef = useRef(null); // light-year odometer shown during system trips
@@ -47,6 +59,10 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
   const onSelectRef = useRef(onSelect);
   const onArriveRef = useRef(onArrive);
   const onReadyRef = useRef(onReady);
+  const onFlightLandRef = useRef(onFlightLand);
+  const flyingRef = useRef(flying);
+  useEffect(() => { flyingRef.current = flying; }, [flying]);
+  useEffect(() => { onFlightLandRef.current = onFlightLand; }, [onFlightLand]);
   useEffect(() => { speedRef.current = speed; }, [speed]);
   useEffect(() => { pausedRef.current = paused; }, [paused]);
   useEffect(() => { onSelectRef.current = onSelect; }, [onSelect]);
@@ -89,15 +105,26 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
     w.follow.timer = 0;
   }, [selectedId]);
 
+  // fly mode on/off: the shuttle appears where the camera is and the camera
+  // slips in behind it; landing hands the view back to the nearest system
+  useEffect(() => {
+    const w = world.current;
+    if (!w) return;
+    if (flying) w.startFlight();
+    else w.endFlight();
+  }, [flying]);
+
   useImperativeHandle(ref, () => ({
     resetView() {
       const w = world.current;
       if (!w) return;
+      if (w.endFlight()) return; // landing already flies to the nearest system
       w.flyTo(w.sysCenter.clone().add(w.homeOffset), w.sysCenter.clone());
     },
     goToSystem(sys) {
       const w = world.current;
       if (!w) return;
+      w.endFlight(true); // park the shuttle; this flight owns the camera
       w.follow.id = null;
       w.sysCenter.set(sys.center[0], sys.center[1], sys.center[2]);
       w.homeOffset.copy(systemViewOffset(sys));
@@ -523,6 +550,21 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
     visorCam.children.forEach((c) => c.layers.enable(1));
     astro.visible = false;
     scene.add(astro);
+
+    // the fly-mode shuttle: hidden until the pilot takes the controls
+    const shuttle = buildShuttle();
+    shuttle.group.visible = false;
+    scene.add(shuttle.group);
+    const flight = {
+      on: false,
+      heading: 0, // yaw, rad
+      pitch: 0, // rad, clamped so "up" always stays up
+      speed: 0, // eased toward throttle * FLIGHT_MAX_SPEED
+      yawIn: 0, pitchIn: 0, // eased stick inputs
+      bankAngle: 0,
+      camBlend: 0, // 0..1 camera easing in behind the ship after take-off
+      time: 0,
+    };
     // pos/vel are relative to the planet's center. normal is the surface
     // point the astronaut stands on (it jumps along that local "up").
     // mode: air/ground = jump cycle, drag = held by a finger,
@@ -718,7 +760,61 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
       homeOffset: HOME_POS.clone(), // overview offset sized to that system
       curSysId: 'sol', // where we are, for the light-year odometer
       curLy: 0,
+      startFlight() {
+        if (flight.on) return;
+        fly = null;
+        follow.id = null;
+        follow.approach = false;
+        releaseAstro();
+        controls.enabled = false;
+        // take off from right where the camera is, pointing the way it looks
+        camera.getWorldDirection(tmpDir);
+        flight.heading = Math.atan2(-tmpDir.x, -tmpDir.z);
+        flight.pitch = THREE.MathUtils.clamp(Math.asin(tmpDir.y), -1.2, 1.2);
+        flight.speed = 0;
+        flight.yawIn = 0;
+        flight.pitchIn = 0;
+        flight.bankAngle = 0;
+        flight.camBlend = 0;
+        shuttle.group.position.copy(camera.position).addScaledVector(tmpDir, 14);
+        shuttle.group.rotation.set(flight.pitch, flight.heading, 0, 'YXZ');
+        shuttle.bank.rotation.z = 0;
+        shuttle.setThrust(0);
+        shuttle.group.visible = true;
+        flight.on = true;
+      },
+      // returns true if we were flying. `quiet` just parks the shuttle and
+      // leaves the camera to whoever called (a system hop, a planet pick);
+      // otherwise the view settles on whichever star system is nearest
+      endFlight(quiet) {
+        if (!flight.on) return false;
+        flight.on = false;
+        shuttle.group.visible = false;
+        shuttle.setThrust(0);
+        controls.enabled = true;
+        controls.target.copy(shuttle.group.position);
+        if (quiet || selectedRef.current) return true;
+        // land at whichever star system the pilot ended up nearest
+        let best = SYSTEMS[0];
+        let bestD = Infinity;
+        for (const sys of SYSTEMS) {
+          tmpDir.set(sys.center[0], sys.center[1], sys.center[2]);
+          const d = tmpDir.distanceTo(shuttle.group.position);
+          if (d < bestD) { bestD = d; best = sys; }
+        }
+        const w = world.current;
+        w.sysCenter.set(best.center[0], best.center[1], best.center[2]);
+        w.homeOffset.copy(systemViewOffset(best));
+        w.curSysId = best.id;
+        w.curLy = best.ly;
+        flyTo(w.sysCenter.clone().add(w.homeOffset), w.sysCenter.clone());
+        onFlightLandRef.current?.(best);
+        return true;
+      },
     };
+    const tmpDir = new THREE.Vector3();
+    // scene remounted (dev hot-reload) mid-flight: pick the controls back up
+    if (flyingRef.current) world.current.startFlight();
     // re-apply the current selection now that the scene exists
     if (selectedRef.current) {
       setAstronaut(selectedRef.current);
@@ -759,6 +855,7 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
     };
 
     const onDown = (e) => {
+      if (flight.on) return; // the flight deck owns input while flying
       // grab the astronaut first — dragging it beats camera gestures
       if (astro.visible && astroState.id && dragPointerId === null) {
         setPointer(e);
@@ -1250,6 +1347,49 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
         }
       }
 
+      // fly mode: steer the shuttle from the flight deck's inputs and chase
+      // it with the camera. Heading/pitch are plain angles (pitch clamped)
+      // so the horizon never flips on a young pilot; banking is cosmetic
+      if (flight.on) {
+        const inp = flightInput?.current ?? { yaw: 0, pitch: 0, throttle: 0 };
+        flight.time += dt;
+        const ease = Math.min(1, dt * 6);
+        flight.yawIn += (inp.yaw - flight.yawIn) * ease;
+        flight.pitchIn += (inp.pitch - flight.pitchIn) * ease;
+        flight.heading -= flight.yawIn * FLIGHT_YAW_RATE * dt;
+        flight.pitch = THREE.MathUtils.clamp(
+          flight.pitch + flight.pitchIn * FLIGHT_PITCH_RATE * dt, -1.25, 1.25,
+        );
+        const targetSpeed = THREE.MathUtils.clamp(inp.throttle, 0, 1) * FLIGHT_MAX_SPEED;
+        flight.speed += (targetSpeed - flight.speed) * Math.min(1, dt * 1.8);
+
+        shuttle.group.rotation.set(flight.pitch, flight.heading, 0, 'YXZ');
+        shuttle.group.getWorldDirection(tmpDir); // +Z in world; nose is -Z
+        shuttle.group.position.addScaledVector(tmpDir, -flight.speed * dt);
+        // soft edge of the map: slide along the boundary instead of leaving
+        if (shuttle.group.position.length() > FLIGHT_BOUND) {
+          shuttle.group.position.setLength(FLIGHT_BOUND);
+        }
+        // bank into turns, nose-wobble with the throttle
+        flight.bankAngle += (flight.yawIn * 0.55 - flight.bankAngle) * Math.min(1, dt * 4);
+        shuttle.bank.rotation.z = flight.bankAngle;
+        shuttle.bank.position.y = Math.sin(flight.time * 2.3) * 0.04;
+        shuttle.setThrust(inp.throttle, flight.time);
+
+        // chase camera: behind and a little above, looking past the nose;
+        // it slides into place over the first second after take-off
+        flight.camBlend = Math.min(1, flight.camBlend + dt * 1.4);
+        const back = 15 + flight.speed * 0.06;
+        tmp.set(0, 4.2, back).applyQuaternion(shuttle.group.quaternion).add(shuttle.group.position);
+        const camEase = reducedMotion ? 1 : Math.min(1, dt * (2.5 + flight.camBlend * 4));
+        camera.position.lerp(tmp, camEase);
+        tmp2.copy(shuttle.group.position).addScaledVector(tmpDir, -9);
+        tmp2.y += 1.0;
+        controls.target.lerp(tmp2, camEase);
+        camera.up.set(0, 1, 0);
+        camera.lookAt(controls.target);
+      }
+
       // camera follow: the approach flies into a framing that keeps the body
       // clear of the fact card; after that the camera only translates with
       // the planet, so rotating/zooming/panning around it stays free
@@ -1310,9 +1450,9 @@ const SolarSystem = forwardRef(function SolarSystem({ selectedId, speed, paused,
         }
       }
 
-      controls.update();
+      if (!flight.on) controls.update();
       // keep free panning within the current system so nobody gets lost
-      if (!follow.id && !fly) {
+      if (!follow.id && !fly && !flight.on) {
         tmp.subVectors(controls.target, world.current.sysCenter);
         if (tmp.length() > 200) {
           controls.target.copy(world.current.sysCenter).addScaledVector(tmp.normalize(), 200);
