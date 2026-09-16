@@ -10,7 +10,7 @@ import {
   makeCanvas, mulberry, rockyTexture, ringTexture, sunTexture, sunGlowTexture,
   textureFor, nebulaSkyTexture, softDotTexture,
 } from '@/lib/textures';
-import { buildAstronaut } from '@/lib/astronaut';
+import { buildAstronaut, pulseAstronautLights } from '@/lib/astronaut';
 import { buildShuttle, SHUTTLE_SCALE } from '@/lib/shuttle';
 
 // chase-camera distances were tuned for the full-size model; this shrinks
@@ -1028,6 +1028,7 @@ const SolarSystem = forwardRef(function SolarSystem({
     function animate() {
       raf = requestAnimationFrame(animate);
       const dt = Math.min(clock.getDelta(), 0.05);
+      if (astro.visible && !reducedMotion) pulseAstronautLights(clock.elapsedTime);
       // catch any size change the events missed (rotation, split view,
       // browser chrome sliding away) — cheap: two layout reads per frame
       if (canvas.clientWidth !== view.w || canvas.clientHeight !== view.h) fit();
