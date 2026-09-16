@@ -80,12 +80,6 @@ export default function Home() {
     setSelectedId(null);
   }, []);
 
-  const reset = useCallback(() => {
-    setFlying(false);
-    deselect();
-    sceneRef.current?.resetView();
-  }, [deselect]);
-
   const toggleFly = useCallback(() => {
     window.speechSynthesis?.cancel();
     setSelectedId(null);
@@ -119,7 +113,6 @@ export default function Home() {
           visible={uiVisible}
           speed={speed}
           onSpeed={setSpeed}
-          onReset={reset}
           flying={flying}
           onFly={toggleFly}
         />
