@@ -184,15 +184,9 @@ export default function FlightDeck({ visible, input, onLand }) {
           onChange={(e) => setThrottleBoth(parseFloat(e.target.value))}
         />
         <span className="throttle-readout">{pct}%</span>
-      </div>
-
-      <div className="deck-mid">
         <button className="land-btn" onClick={onLand} aria-label="Land the shuttle and go back to exploring">
           🛬 Land
         </button>
-        <div className="deck-hint" aria-hidden="true">
-          <span className="deck-hint-keys">Arrows steer · Shift faster · Space slower</span>
-        </div>
       </div>
 
       <div

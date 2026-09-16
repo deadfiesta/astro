@@ -763,19 +763,14 @@ body {
 }
 .throttle-slider:focus-visible { outline: 3px solid var(--sun); outline-offset: 4px; }
 
-.deck-mid {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
-  align-self: flex-end;
-}
+/* sits at the foot of the throttle column, under the readout */
 .land-btn {
-  min-height: 56px;
-  padding: 0 22px;
-  border-radius: 18px;
+  margin-top: 4px;
+  min-height: 48px;
+  padding: 0 16px;
+  border-radius: 16px;
   border: 2px solid rgba(170, 180, 224, 0.35);
-  background: var(--panel);
+  background: rgba(170, 180, 224, 0.12);
   color: var(--ink);
   font-family: var(--display);
   font-size: 20px;
@@ -785,12 +780,6 @@ body {
 }
 .land-btn:active { transform: scale(0.94); }
 .land-btn:focus-visible { outline: 3px solid var(--sun); outline-offset: 2px; }
-.deck-hint {
-  font-size: 12px;
-  font-weight: 700;
-  color: rgba(170, 180, 224, 0.85);
-  text-shadow: 0 1px 3px rgba(7, 11, 33, 0.9);
-}
 
 /* steering joystick: a round base with faint direction markers and a
    rocket knob that follows the thumb (moved via inline transform from
@@ -850,11 +839,9 @@ body {
   .joy-knob { font-size: 24px; }
   .joy-mark { font-size: 14px; }
   .throttle-slider { height: 120px; }
-  .land-btn { min-height: 50px; padding: 0 14px; font-size: 17px; }
-  .deck-hint { display: none; }
+  .land-btn { min-height: 44px; padding: 0 12px; font-size: 16px; }
 }
 
-.deck-hint { min-height: 1.2em; text-align: center; max-width: 180px; }
 
 /* ---------- fly mode: mini map ---------- */
 /* a round radar under the top bar, on the right; the shuttle sits at the
