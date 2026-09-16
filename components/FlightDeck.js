@@ -3,13 +3,15 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { motion } from 'motion/react';
 
-/* The shuttle's controls. Steering is a big D-pad (hold to turn: left/right
-   swing the nose, up/down pitch it) plus keyboard arrows or WASD, and on
-   phones and tablets an opt-in tilt mode: point the device where you want
-   to go — tilt its top edge up to climb, down to dive, roll it left or right
-   to turn. Propulsion is a vertical throttle slider, also nudged with
-   Shift/E/+ (faster) and Space/Ctrl/Q/- (slower — hold Space to brake all
-   the way down). The scene reads the live values
+/* The shuttle's controls. Steering is a virtual joystick — drag the knob
+   anywhere off centre and the ship follows: left/right swing the nose,
+   up/down pitch it, further from the middle turns harder — plus keyboard
+   arrows or WASD (which also move the knob, so it doubles as a stick
+   readout), and on phones and tablets an opt-in tilt mode: point the
+   device where you want to go — tilt its top edge up to climb, down to
+   dive, roll it left or right to turn. Propulsion is a vertical throttle
+   slider, also nudged with Shift/E/+ (faster) and Space/Ctrl/Q/- (slower —
+   hold Space to brake all the way down). The scene reads the live values
    every frame through `input` (a ref: { yaw, pitch, throttle }) so no React
    re-render sits in the control loop. Escape or the Land button ends the
    flight. */
@@ -32,6 +34,12 @@ const throttleKey = (k) => THROTTLE_ALIAS[k] ?? (k.length === 1 ? k.toLowerCase(
 // dead zone so a steady hand flies straight
 const TILT_FULL_DEG = 24;
 const TILT_DEAD_DEG = 3;
+
+// joystick feel: the knob's travel as a fraction of the base radius (so
+// its edge stays inside the ring), and a centre dead zone so a resting
+// thumb doesn't drift the ship
+const STICK_TRAVEL = 0.58;
+const STICK_DEAD = 0.1;
 
 const clamp1 = (v) => Math.max(-1, Math.min(1, v));
 
@@ -64,38 +72,38 @@ function deadzone(deg) {
 
 export default function FlightDeck({ visible, input, onLand }) {
   const [throttle, setThrottle] = useState(input.current.throttle);
-  const [held, setHeld] = useState({ yaw: 0, pitch: 0 });
   // 'hidden' = no sensor here, otherwise the tilt toggle's state
   const [tilt, setTilt] = useState('hidden'); // hidden | off | on | denied | silent
-  // which sources are pushing each axis, so a key, a button and the
+  const [gripping, setGripping] = useState(false); // joystick knob held
+  // which sources are pushing each axis, so a key, the stick and the
   // sensor never fight — they simply add up (clamped)
   const keys = useRef(new Set());
-  const pads = useRef({ yaw: 0, pitch: 0 });
+  const stick = useRef({ yaw: 0, pitch: 0 }); // joystick, analog
   const tiltIn = useRef({ yaw: 0, pitch: 0 });
   const tiltRest = useRef(null); // neutral (right, up) captured on enable
   const thrKeys = useRef(new Set()); // throttle keys currently held (faster and slower)
+  const baseRef = useRef(null); // joystick base element
+  const knobRef = useRef(null);
+  const stickPointer = useRef(null); // pointer id currently dragging the knob
 
-  // write the combined stick to the ref the scene reads (cheap, any rate)
+  // write the combined stick to the ref the scene reads (cheap, any rate),
+  // and park the knob where the combined stick points so keys show too
   const apply = useCallback(() => {
     let yaw = 0, pitch = 0;
     for (const k of keys.current) {
       const [axis, v] = STEER_KEYS[k];
       if (axis === 'yaw') yaw += v; else pitch += v;
     }
-    input.current.yaw = clamp1(yaw + pads.current.yaw + tiltIn.current.yaw);
-    input.current.pitch = clamp1(pitch + pads.current.pitch + tiltIn.current.pitch);
-  }, [input]);
-
-  // ...and light up the D-pad for the discrete sources (keys/buttons only)
-  const recompute = useCallback(() => {
-    apply();
-    let yaw = pads.current.yaw, pitch = pads.current.pitch;
-    for (const k of keys.current) {
-      const [axis, v] = STEER_KEYS[k];
-      if (axis === 'yaw') yaw += v; else pitch += v;
+    yaw = clamp1(yaw + stick.current.yaw + tiltIn.current.yaw);
+    pitch = clamp1(pitch + stick.current.pitch + tiltIn.current.pitch);
+    input.current.yaw = yaw;
+    input.current.pitch = pitch;
+    const base = baseRef.current, knob = knobRef.current;
+    if (base && knob) {
+      const travel = (base.clientWidth / 2) * STICK_TRAVEL;
+      knob.style.transform = `translate(${yaw * travel}px, ${-pitch * travel}px)`;
     }
-    setHeld({ yaw: clamp1(yaw), pitch: clamp1(pitch) });
-  }, [apply]);
+  }, [input]);
 
   const setThrottleBoth = useCallback((v) => {
     const t = Math.max(0, Math.min(1, v));
@@ -165,7 +173,7 @@ export default function FlightDeck({ visible, input, onLand }) {
       if (STEER_KEYS[e.key]) {
         e.preventDefault();
         keys.current.add(e.key);
-        recompute();
+        apply();
       } else if (FASTER_KEYS.has(e.key) || SLOWER_KEYS.has(e.key)) {
         e.preventDefault(); // Space must not press a focused button or scroll
         thrKeys.current.add(throttleKey(e.key));
@@ -174,7 +182,7 @@ export default function FlightDeck({ visible, input, onLand }) {
     const up = (e) => {
       if (STEER_KEYS[e.key]) {
         keys.current.delete(e.key);
-        recompute();
+        apply();
       } else if (FASTER_KEYS.has(e.key) || SLOWER_KEYS.has(e.key)) {
         e.preventDefault();
         thrKeys.current.delete(throttleKey(e.key));
@@ -183,7 +191,7 @@ export default function FlightDeck({ visible, input, onLand }) {
     const blur = () => {
       keys.current.clear();
       thrKeys.current.clear();
-      recompute();
+      apply();
     };
     // held throttle keys ramp the slider smoothly; faster and slower held
     // together cancel out, and releasing one leaves the other in charge
@@ -202,24 +210,49 @@ export default function FlightDeck({ visible, input, onLand }) {
       window.removeEventListener('blur', blur);
       blur();
     };
-  }, [visible, input, onLand, recompute, setThrottleBoth]);
+  }, [visible, input, onLand, apply, setThrottleBoth]);
 
-  // D-pad: hold to steer, release (or lose the pointer) to centre
-  const pad = (axis, v) => ({
+  // joystick: the knob follows the finger (clamped to the ring), the stick
+  // value is the knob's offset over its travel with a small dead zone, and
+  // letting go springs everything back to centre
+  const moveStick = (e) => {
+    const base = baseRef.current;
+    if (!base) return;
+    const r = base.getBoundingClientRect();
+    const travel = (r.width / 2) * STICK_TRAVEL;
+    let x = (e.clientX - (r.left + r.width / 2)) / travel;
+    let y = ((r.top + r.height / 2) - e.clientY) / travel;
+    const mag = Math.hypot(x, y);
+    if (mag > 1) { x /= mag; y /= mag; }
+    const m = Math.min(mag, 1);
+    const k = m < STICK_DEAD ? 0 : (m - STICK_DEAD) / (1 - STICK_DEAD) / m;
+    stick.current.yaw = x * k;
+    stick.current.pitch = y * k;
+    apply();
+  };
+  const releaseStick = () => {
+    stickPointer.current = null;
+    stick.current.yaw = 0;
+    stick.current.pitch = 0;
+    setGripping(false);
+    apply();
+  };
+  const stickHandlers = {
     onPointerDown: (e) => {
       e.preventDefault();
       e.currentTarget.setPointerCapture?.(e.pointerId);
-      pads.current[axis] = v;
-      recompute();
+      stickPointer.current = e.pointerId;
+      setGripping(true);
+      moveStick(e);
     },
-    onPointerUp: () => { pads.current[axis] = 0; recompute(); },
-    onPointerCancel: () => { pads.current[axis] = 0; recompute(); },
-    onLostPointerCapture: () => { pads.current[axis] = 0; recompute(); },
+    onPointerMove: (e) => { if (stickPointer.current === e.pointerId) moveStick(e); },
+    onPointerUp: releaseStick,
+    onPointerCancel: releaseStick,
+    onLostPointerCapture: releaseStick,
     onContextMenu: (e) => e.preventDefault(),
-  });
+  };
 
   const pct = Math.round(throttle * 100);
-  const cls = (axis, v) => `pad-btn pad-${axis}${v > 0 ? '-pos' : '-neg'}${Math.sign(held[axis]) === v ? ' held' : ''}`;
 
   const tiltHint = {
     on: 'Tilt to steer · hold level to fly straight',
@@ -271,12 +304,18 @@ export default function FlightDeck({ visible, input, onLand }) {
         </div>
       </div>
 
-      <div className="dpad" role="group" aria-label="Steering">
-        <button className={cls('pitch', 1)} aria-label="Nose up" {...pad('pitch', 1)}>▲</button>
-        <button className={cls('yaw', -1)} aria-label="Turn left" {...pad('yaw', -1)}>◀</button>
-        <span className="pad-center" aria-hidden="true">🚀</span>
-        <button className={cls('yaw', 1)} aria-label="Turn right" {...pad('yaw', 1)}>▶</button>
-        <button className={cls('pitch', -1)} aria-label="Nose down" {...pad('pitch', -1)}>▼</button>
+      <div
+        ref={baseRef}
+        className={`joystick${gripping ? ' gripping' : ''}`}
+        role="img"
+        aria-label="Steering joystick: drag the knob to steer, or use the arrow keys"
+        {...stickHandlers}
+      >
+        <span className="joy-mark joy-up" aria-hidden="true">▲</span>
+        <span className="joy-mark joy-left" aria-hidden="true">◀</span>
+        <span className="joy-mark joy-right" aria-hidden="true">▶</span>
+        <span className="joy-mark joy-down" aria-hidden="true">▼</span>
+        <div ref={knobRef} className="joy-knob" aria-hidden="true">🚀</div>
       </div>
     </motion.div>
   );

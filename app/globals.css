@@ -789,47 +789,63 @@ body {
   text-shadow: 0 1px 3px rgba(7, 11, 33, 0.9);
 }
 
-.dpad {
-  display: grid;
-  grid-template-columns: repeat(3, 62px);
-  grid-template-rows: repeat(3, 62px);
-  gap: 6px;
-  padding: 8px;
-  border-radius: 26px;
+/* steering joystick: a round base with faint direction markers and a
+   rocket knob that follows the thumb (moved via inline transform from
+   FlightDeck; keys move it too) and springs back when let go */
+.joystick {
+  position: relative;
+  width: 172px;
+  height: 172px;
+  border-radius: 50%;
   border: 2px solid rgba(170, 180, 224, 0.35);
-  background: var(--panel);
-}
-.pad-btn {
-  border-radius: 16px;
-  border: 2px solid rgba(170, 180, 224, 0.28);
-  background: var(--space-2);
-  color: var(--ink);
-  font-size: 24px;
-  line-height: 1;
-  cursor: pointer;
+  background:
+    radial-gradient(circle at 50% 50%, rgba(170, 180, 224, 0.16) 0 30%, transparent 31%),
+    var(--panel);
   display: grid;
   place-items: center;
+  cursor: grab;
   user-select: none;
   -webkit-user-select: none;
   -webkit-touch-callout: none;
   touch-action: none;
-  transition: transform 0.08s ease, background 0.08s ease, border-color 0.08s ease;
 }
-.pad-btn.held, .pad-btn:active {
-  transform: scale(0.94);
+.joystick.gripping { cursor: grabbing; border-color: rgba(255, 201, 60, 0.6); }
+.joy-mark {
+  position: absolute;
+  color: rgba(170, 180, 224, 0.55);
+  font-size: 16px;
+  line-height: 1;
+  pointer-events: none;
+}
+.joy-up { top: 9px; left: 50%; transform: translateX(-50%); }
+.joy-down { bottom: 9px; left: 50%; transform: translateX(-50%); }
+.joy-left { left: 10px; top: 50%; transform: translateY(-50%); }
+.joy-right { right: 10px; top: 50%; transform: translateY(-50%); }
+.joy-knob {
+  width: 42%;
+  height: 42%;
+  border-radius: 50%;
+  border: 2px solid rgba(170, 180, 224, 0.4);
+  background: var(--space-2);
+  display: grid;
+  place-items: center;
+  font-size: 28px;
+  line-height: 1;
+  box-shadow: 0 6px 16px rgba(7, 11, 33, 0.55);
+  pointer-events: none;
+  will-change: transform;
+  transition: transform 0.18s ease, background 0.1s ease, border-color 0.1s ease;
+}
+.joystick.gripping .joy-knob {
+  transition: background 0.1s ease, border-color 0.1s ease; /* track the finger 1:1 */
   background: rgba(255, 201, 60, 0.22);
   border-color: var(--sun);
 }
-.pad-btn:focus-visible { outline: 3px solid var(--sun); outline-offset: 2px; }
-.pad-pitch-pos { grid-column: 2; grid-row: 1; }
-.pad-yaw-neg { grid-column: 1; grid-row: 2; }
-.pad-center { grid-column: 2; grid-row: 2; display: grid; place-items: center; font-size: 26px; }
-.pad-yaw-pos { grid-column: 3; grid-row: 2; }
-.pad-pitch-neg { grid-column: 2; grid-row: 3; }
 
 @media (max-width: 479px) {
-  .dpad { grid-template-columns: repeat(3, 52px); grid-template-rows: repeat(3, 52px); }
-  .pad-btn { font-size: 20px; }
+  .joystick { width: 140px; height: 140px; }
+  .joy-knob { font-size: 24px; }
+  .joy-mark { font-size: 14px; }
   .throttle-slider { height: 120px; }
   .land-btn { min-height: 50px; padding: 0 14px; font-size: 17px; }
   .deck-hint { display: none; }
