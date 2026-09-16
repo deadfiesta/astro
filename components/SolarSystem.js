@@ -558,6 +558,18 @@ const SolarSystem = forwardRef(function SolarSystem({
     kickerB.layers.set(1);
     scene.add(kickerB);
     visorCam.children.forEach((c) => c.layers.enable(1));
+
+    // the shuttle's glossy paint mirrors its surroundings the same way: its
+    // own cube camera (bigger, since the hull fills far more of the screen
+    // than a visor; a longer far plane so whole planets show in the paint).
+    // Refreshed one face per frame while flying, in place of the visor pass
+    const hullRT = new THREE.WebGLCubeRenderTarget(256, {
+      generateMipmaps: true,
+      minFilter: THREE.LinearMipmapLinearFilter,
+    });
+    const hullCam = new THREE.CubeCamera(2, 1500, hullRT);
+    hullCam.children.forEach((c) => c.layers.enable(1)); // sees the kickers too
+    scene.add(hullCam);
     astro.visible = false;
     scene.add(astro);
 
@@ -565,6 +577,7 @@ const SolarSystem = forwardRef(function SolarSystem({
     const shuttle = buildShuttle();
     shuttle.group.visible = false;
     scene.add(shuttle.group, shuttle.exhaust); // exhaust trails in world space
+    shuttle.setEnvMap(hullRT.texture); // live mirror of the scene on the paint
     const flight = {
       on: false,
       heading: 0, // yaw, rad
@@ -1522,7 +1535,25 @@ const SolarSystem = forwardRef(function SolarSystem({
       // extra scene pass is a small, even cost rather than a periodic spike.
       // Only while the astronaut is on screen; hide it so the visor doesn't
       // reflect its own helmet
-      if (astro.visible) {
+      if (flight.on) {
+        // in flight the paint gets the reflection budget instead of the
+        // visor. The kickers ride along above and beside the ship so the
+        // lacquer carries bright sliding highlights across the dark sky
+        const face = visorFrame++ % 6;
+        if (face === 0) {
+          hullCam.position.copy(shuttle.group.position);
+          tmp.set(-9, 12, 3).applyQuaternion(shuttle.group.quaternion);
+          kickerA.position.copy(shuttle.group.position).add(tmp);
+          tmp.set(8, 5, -6).applyQuaternion(shuttle.group.quaternion);
+          kickerB.position.copy(shuttle.group.position).add(tmp);
+        }
+        shuttle.group.visible = false; // no reflecting its own hull
+        hullRT.texture.generateMipmaps = face === 5;
+        renderer.setRenderTarget(hullRT, face);
+        renderer.render(scene, hullCam.children[face]);
+        renderer.setRenderTarget(null);
+        shuttle.group.visible = true;
+      } else if (astro.visible) {
         const face = visorFrame++ % 6;
         if (face === 0) {
           visorCam.position.copy(astro.position);
@@ -1577,6 +1608,7 @@ const SolarSystem = forwardRef(function SolarSystem({
       controls.dispose();
       labelRenderer.domElement.remove();
       visorRT.dispose();
+      hullRT.dispose();
       scene.traverse((obj) => {
         obj.geometry?.dispose?.();
         const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
