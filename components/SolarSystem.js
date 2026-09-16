@@ -592,6 +592,12 @@ const SolarSystem = forwardRef(function SolarSystem({
       yawIn: 0, pitchIn: 0, // eased stick inputs
       bankAngle: 0,
       camBlend: 0, // 0..1 camera easing in behind the ship after take-off
+      // chase camera as *offsets from the ship*, eased in place. The camera
+      // itself rides rigidly on the ship's position each frame, so it never
+      // trails behind at speed (easing world positions toward a target that
+      // moves 70 units/s left the camera ~10 units back at full throttle)
+      camOff: new THREE.Vector3(),
+      tgtOff: new THREE.Vector3(),
       time: 0,
     };
     // pos/vel are relative to the planet's center. normal is the surface
@@ -839,6 +845,10 @@ const SolarSystem = forwardRef(function SolarSystem({
         shuttle.group.position.copy(camera.position).addScaledVector(tmpDir, 14 * SHUTTLE_SCALE);
         shuttle.group.rotation.set(flight.pitch, flight.heading, 0, 'YXZ');
         shuttle.bank.rotation.z = 0;
+        // start the chase offsets from where the camera actually is, so the
+        // view slides into place behind the ship instead of snapping
+        flight.camOff.copy(camera.position).sub(shuttle.group.position);
+        flight.tgtOff.copy(controls.target).sub(shuttle.group.position);
         shuttle.setThrust(0);
         shuttle.resetExhaust(); // no streak from wherever it was parked
         shuttle.group.visible = true;
@@ -1456,14 +1466,20 @@ const SolarSystem = forwardRef(function SolarSystem({
         flight.camBlend = Math.min(1, flight.camBlend + dt * 1.4);
         // ...framed for the ship's size. The camera comes in less than the
         // ship shrank (0.135 vs 0.1), so the shuttle also *looks* smaller on
-        // screen and more of the sky and planets show around it
-        const back = (15 + flight.speed * 0.06) * CHASE_SCALE;
-        tmp.set(0, 4.2 * CHASE_SCALE, back).applyQuaternion(shuttle.group.quaternion).add(shuttle.group.position);
+        // screen and more of the sky and planets show around it. Full
+        // throttle eases it back by under a tenth more — just enough to
+        // read as speed without the ship shrinking into the distance
+        const back = (15 + flight.speed * 0.02) * CHASE_SCALE;
+        tmp.set(0, 4.2 * CHASE_SCALE, back).applyQuaternion(shuttle.group.quaternion);
         const camEase = reducedMotion ? 1 : Math.min(1, dt * (2.5 + flight.camBlend * 4));
-        camera.position.lerp(tmp, camEase);
-        tmp2.copy(shuttle.group.position).addScaledVector(tmpDir, -9 * CHASE_SCALE);
+        // ease the *offsets* (turns, pitch, throttle changes), then pin the
+        // camera to the ship's exact position so it never lags at speed
+        flight.camOff.lerp(tmp, camEase);
+        camera.position.copy(shuttle.group.position).add(flight.camOff);
+        tmp2.copy(tmpDir).multiplyScalar(-9 * CHASE_SCALE);
         tmp2.y += 1.0 * CHASE_SCALE;
-        controls.target.lerp(tmp2, camEase);
+        flight.tgtOff.lerp(tmp2, camEase);
+        controls.target.copy(shuttle.group.position).add(flight.tgtOff);
         camera.up.set(0, 1, 0);
         camera.lookAt(controls.target);
       }
