@@ -628,6 +628,9 @@ body {
   /* tucked right under the title row so it stays clear of the system */
   top: calc(max(10px, env(safe-area-inset-top)) + 60px);
   z-index: 4;
+  /* explicit width: a left:50% shrink-to-fit box can only grow to the
+     right edge (~50vw), which squeezed the description on phones */
+  width: max-content;
   max-width: min(520px, calc(100vw - 24px));
   background: var(--panel);
   border: 2px solid rgba(255, 201, 60, 0.45);
