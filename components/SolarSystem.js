@@ -178,7 +178,13 @@ const SolarSystem = forwardRef(function SolarSystem({
     function makeLabel(text, color, id, k = 1) {
       const el = document.createElement('div');
       el.className = 'orbit-label';
-      el.textContent = text;
+      // the text sits in its own span so the reveal animation (fade + rise,
+      // see .orbit-label.in) can run on it independently of the outer
+      // element, whose opacity and transform the render loop owns
+      const span = document.createElement('span');
+      span.className = 'orbit-label-text';
+      span.textContent = text;
+      el.appendChild(span);
       el.style.setProperty('--c', color); // body colour becomes the outline
       const obj = new CSS2DObject(el);
       obj.userData.id = id;
@@ -1012,6 +1018,18 @@ const SolarSystem = forwardRef(function SolarSystem({
       if (intro.done && !intro.readyFired) {
         intro.readyFired = true;
         onReadyRef.current?.();
+        // names drift in one after another, nearest to the camera first,
+        // so the freshly formed system feels like it's being introduced
+        [...labels]
+          .sort((a, b) => {
+            a.obj.getWorldPosition(tmp);
+            b.obj.getWorldPosition(tmp2);
+            return camera.position.distanceTo(tmp) - camera.position.distanceTo(tmp2);
+          })
+          .forEach((l, i) => {
+            l.el.style.setProperty('--d', `${Math.min(i * 70, 900)}ms`);
+            l.el.classList.add('in');
+          });
       }
 
       // astronaut: jump cycle, finger-drag, and a natural ballistic fall —

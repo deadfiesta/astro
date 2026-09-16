@@ -102,6 +102,33 @@ body {
   padding: 4px 6px; /* generous tap target without a visible box */
   will-change: transform, opacity;
 }
+/* reveal: each name fades in while rising and settling to full size, with
+   a per-label delay (--d) staggered from the render loop. The outer element
+   keeps its per-frame opacity/transform; the text span animates inside it.
+   Hidden until the intro completes and adds .in */
+.orbit-label-text {
+  display: inline-block;
+  opacity: 0;
+}
+.orbit-label.in .orbit-label-text {
+  animation: label-in 0.9s cubic-bezier(0.22, 1, 0.36, 1) var(--d, 0ms) both;
+}
+@keyframes label-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.86);
+    filter: blur(3px);
+  }
+  60% { filter: blur(0); }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    filter: blur(0);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .orbit-label.in .orbit-label-text { animation: none; opacity: 1; }
+}
 
 /* ---------- top bar ---------- */
 .topbar {
