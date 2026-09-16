@@ -1467,10 +1467,11 @@ const SolarSystem = forwardRef(function SolarSystem({
         // ...framed for the ship's size. The camera comes in less than the
         // ship shrank (0.135 vs 0.1), so the shuttle also *looks* smaller on
         // screen and more of the sky and planets show around it. Full
-        // throttle eases it back by under a tenth more — just enough to
-        // read as speed without the ship shrinking into the distance
-        const back = (15 + flight.speed * 0.02) * CHASE_SCALE;
-        tmp.set(0, 4.2 * CHASE_SCALE, back).applyQuaternion(shuttle.group.quaternion);
+        // throttle eases it back by about half again (and a touch higher),
+        // a clear speed cue while the ship stays a solid presence on screen
+        const back = (15 + flight.speed * 0.1) * CHASE_SCALE;
+        const up = (4.2 + flight.speed * 0.02) * CHASE_SCALE;
+        tmp.set(0, up, back).applyQuaternion(shuttle.group.quaternion);
         const camEase = reducedMotion ? 1 : Math.min(1, dt * (2.5 + flight.camBlend * 4));
         // ease the *offsets* (turns, pitch, throttle changes), then pin the
         // camera to the ship's exact position so it never lags at speed
