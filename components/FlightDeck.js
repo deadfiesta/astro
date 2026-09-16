@@ -4,11 +4,14 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { motion } from 'motion/react';
 
 /* The shuttle's controls. Steering is a big D-pad (hold to turn: left/right
-   swing the nose, up/down pitch it) plus keyboard arrows or WASD. Propulsion
-   is a vertical throttle slider, also nudged with Shift/E (faster) and
-   Ctrl/Q (slower). The scene reads the live values every frame through
-   `input` (a ref: { yaw, pitch, throttle }) so no React re-render sits in
-   the control loop. Escape or the Land button ends the flight. */
+   swing the nose, up/down pitch it) plus keyboard arrows or WASD, and on
+   phones and tablets an opt-in tilt mode: point the device where you want
+   to go — tilt its top edge up to climb, down to dive, roll it left or right
+   to turn. Propulsion is a vertical throttle slider, also nudged with
+   Shift/E (faster) and Ctrl/Q (slower). The scene reads the live values
+   every frame through `input` (a ref: { yaw, pitch, throttle }) so no React
+   re-render sits in the control loop. Escape or the Land button ends the
+   flight. */
 
 const STEER_KEYS = {
   ArrowLeft: ['yaw', -1], a: ['yaw', -1], A: ['yaw', -1],
@@ -19,32 +22,134 @@ const STEER_KEYS = {
 const FASTER_KEYS = new Set(['Shift', 'e', 'E', '=', '+']);
 const SLOWER_KEYS = new Set(['Control', 'q', 'Q', '-', '_']);
 
+// tilt feel: degrees of tilt from the neutral hold for full stick, and a
+// dead zone so a steady hand flies straight
+const TILT_FULL_DEG = 24;
+const TILT_DEAD_DEG = 3;
+
+const clamp1 = (v) => Math.max(-1, Math.min(1, v));
+
+// how far the screen has been rotated from portrait (0/90/180/270). iOS
+// Safari lacks screen.orientation, so fall back to the legacy angle
+function screenAngle() {
+  const a = window.screen?.orientation?.angle;
+  if (typeof a === 'number') return a;
+  const o = window.orientation;
+  return typeof o === 'number' ? (o + 360) % 360 : 0;
+}
+
+// map device tilt to (right, up) in the *screen's* frame. gamma is the
+// left/right roll of the device (right edge down = positive), beta the
+// front/back tilt (top edge up = positive); in landscape the two swap
+function tiltToScreen(beta, gamma) {
+  switch (screenAngle()) {
+    case 90: return { right: beta, up: -gamma }; // device top points left
+    case 270: return { right: -beta, up: gamma }; // device top points right
+    case 180: return { right: -gamma, up: -beta };
+    default: return { right: gamma, up: beta };
+  }
+}
+
+function deadzone(deg) {
+  const mag = Math.abs(deg);
+  if (mag < TILT_DEAD_DEG) return 0;
+  return Math.sign(deg) * (mag - TILT_DEAD_DEG) / (TILT_FULL_DEG - TILT_DEAD_DEG);
+}
+
 export default function FlightDeck({ visible, input, onLand }) {
   const [throttle, setThrottle] = useState(input.current.throttle);
   const [held, setHeld] = useState({ yaw: 0, pitch: 0 });
-  // which sources are pushing each axis, so a key and a button never fight
+  // 'hidden' = no sensor here, otherwise the tilt toggle's state
+  const [tilt, setTilt] = useState('hidden'); // hidden | off | on | denied | silent
+  // which sources are pushing each axis, so a key, a button and the
+  // sensor never fight — they simply add up (clamped)
   const keys = useRef(new Set());
   const pads = useRef({ yaw: 0, pitch: 0 });
+  const tiltIn = useRef({ yaw: 0, pitch: 0 });
+  const tiltRest = useRef(null); // neutral (right, up) captured on enable
   const nudge = useRef(0); // -1 / 0 / +1 while a throttle key is held
 
-  const recompute = useCallback(() => {
+  // write the combined stick to the ref the scene reads (cheap, any rate)
+  const apply = useCallback(() => {
     let yaw = 0, pitch = 0;
     for (const k of keys.current) {
       const [axis, v] = STEER_KEYS[k];
       if (axis === 'yaw') yaw += v; else pitch += v;
     }
-    yaw = Math.max(-1, Math.min(1, yaw + pads.current.yaw));
-    pitch = Math.max(-1, Math.min(1, pitch + pads.current.pitch));
-    input.current.yaw = yaw;
-    input.current.pitch = pitch;
-    setHeld({ yaw, pitch });
+    input.current.yaw = clamp1(yaw + pads.current.yaw + tiltIn.current.yaw);
+    input.current.pitch = clamp1(pitch + pads.current.pitch + tiltIn.current.pitch);
   }, [input]);
+
+  // ...and light up the D-pad for the discrete sources (keys/buttons only)
+  const recompute = useCallback(() => {
+    apply();
+    let yaw = pads.current.yaw, pitch = pads.current.pitch;
+    for (const k of keys.current) {
+      const [axis, v] = STEER_KEYS[k];
+      if (axis === 'yaw') yaw += v; else pitch += v;
+    }
+    setHeld({ yaw: clamp1(yaw), pitch: clamp1(pitch) });
+  }, [apply]);
 
   const setThrottleBoth = useCallback((v) => {
     const t = Math.max(0, Math.min(1, v));
     input.current.throttle = t;
     setThrottle(t);
   }, [input]);
+
+  // offer tilt only where a motion sensor is plausible: touch devices that
+  // expose the orientation event
+  useEffect(() => {
+    const touch = window.matchMedia('(pointer: coarse)').matches;
+    if (touch && 'DeviceOrientationEvent' in window) setTilt('off');
+  }, []);
+
+  // tilt sensor: the first reading after enabling becomes "level", and the
+  // pilot flies by leaning away from it. Listener lives while visible+on
+  useEffect(() => {
+    if (!visible || tilt !== 'on') {
+      tiltIn.current.yaw = 0;
+      tiltIn.current.pitch = 0;
+      tiltRest.current = null;
+      apply();
+      return undefined;
+    }
+    let got = false;
+    const onTilt = (e) => {
+      if (e.beta == null || e.gamma == null) return;
+      got = true;
+      const s = tiltToScreen(e.beta, e.gamma);
+      if (!tiltRest.current) tiltRest.current = s;
+      tiltIn.current.yaw = clamp1(deadzone(s.right - tiltRest.current.right));
+      tiltIn.current.pitch = clamp1(deadzone(s.up - tiltRest.current.up));
+      apply();
+    };
+    // a change of screen orientation invalidates the captured neutral
+    const recentre = () => { tiltRest.current = null; };
+    // some browsers expose the event but never fire it (sensors off,
+    // in-app webviews): say so instead of leaving a dead toggle
+    const probe = setTimeout(() => { if (!got) setTilt('silent'); }, 2000);
+    window.addEventListener('deviceorientation', onTilt);
+    window.addEventListener('orientationchange', recentre);
+    return () => {
+      clearTimeout(probe);
+      window.removeEventListener('deviceorientation', onTilt);
+      window.removeEventListener('orientationchange', recentre);
+    };
+  }, [visible, tilt, apply]);
+
+  const toggleTilt = () => {
+    if (tilt === 'on') { setTilt('off'); return; }
+    // iOS needs an explicit permission request from inside a tap
+    const req = typeof DeviceOrientationEvent !== 'undefined' && DeviceOrientationEvent.requestPermission;
+    if (typeof req === 'function') {
+      req.call(DeviceOrientationEvent)
+        .then((state) => setTilt(state === 'granted' ? 'on' : 'denied'))
+        .catch(() => setTilt('denied'));
+    } else {
+      setTilt('on');
+    }
+  };
 
   // keyboard
   useEffect(() => {
@@ -109,6 +214,12 @@ export default function FlightDeck({ visible, input, onLand }) {
   const pct = Math.round(throttle * 100);
   const cls = (axis, v) => `pad-btn pad-${axis}${v > 0 ? '-pos' : '-neg'}${Math.sign(held[axis]) === v ? ' held' : ''}`;
 
+  const tiltHint = {
+    on: 'Tilt to steer · hold level to fly straight',
+    denied: 'Tilt needs motion permission',
+    silent: 'No tilt sensor found',
+  }[tilt];
+
   return (
     <motion.div
       id="flight-deck"
@@ -135,10 +246,22 @@ export default function FlightDeck({ visible, input, onLand }) {
       </div>
 
       <div className="deck-mid">
+        {tilt !== 'hidden' && (
+          <button
+            className={`tilt-btn${tilt === 'on' ? ' active' : ''}`}
+            aria-pressed={tilt === 'on'}
+            aria-label={tilt === 'on' ? 'Turn off tilt steering' : 'Steer by tilting the device'}
+            onClick={toggleTilt}
+          >
+            📱 Tilt
+          </button>
+        )}
         <button className="land-btn" onClick={onLand} aria-label="Land the shuttle and go back to exploring">
           🛬 Land
         </button>
-        <div className="deck-hint" aria-hidden="true">Arrows steer · Shift = faster</div>
+        <div className={`deck-hint${tilt === 'denied' || tilt === 'silent' ? ' deck-hint-warn' : ''}`} aria-live="polite">
+          {tiltHint ?? <span className="deck-hint-keys">Arrows steer · Shift = faster</span>}
+        </div>
       </div>
 
       <div className="dpad" role="group" aria-label="Steering">
