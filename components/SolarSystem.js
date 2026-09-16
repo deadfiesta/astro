@@ -14,8 +14,10 @@ import { buildAstronaut } from '@/lib/astronaut';
 import { buildShuttle, SHUTTLE_SCALE } from '@/lib/shuttle';
 
 // chase-camera distances were tuned for the full-size model; this shrinks
-// them with the ship (a little less than SHUTTLE_SCALE, see the flight block)
-const CHASE_SCALE = 0.45;
+// them with the ship (a little less than SHUTTLE_SCALE, see the flight block).
+// At 0.135 the camera sits ~2–2.6 units behind the 1-unit ship, well clear
+// of the 0.1 near plane
+const CHASE_SCALE = 0.135;
 
 const HOME_POS = new THREE.Vector3(0, 42, 70);
 const HOME_TARGET = new THREE.Vector3(0, 0, 0);
@@ -1453,7 +1455,7 @@ const SolarSystem = forwardRef(function SolarSystem({
         // it slides into place over the first second after take-off
         flight.camBlend = Math.min(1, flight.camBlend + dt * 1.4);
         // ...framed for the ship's size. The camera comes in less than the
-        // ship shrank (0.45 vs 1/3), so the shuttle also *looks* smaller on
+        // ship shrank (0.135 vs 0.1), so the shuttle also *looks* smaller on
         // screen and more of the sky and planets show around it
         const back = (15 + flight.speed * 0.06) * CHASE_SCALE;
         tmp.set(0, 4.2 * CHASE_SCALE, back).applyQuaternion(shuttle.group.quaternion).add(shuttle.group.position);
@@ -1553,6 +1555,9 @@ const SolarSystem = forwardRef(function SolarSystem({
           kickerA.position.copy(shuttle.group.position).add(tmp);
           tmp.set(8, 5, -6).multiplyScalar(SHUTTLE_SCALE).applyQuaternion(shuttle.group.quaternion);
           kickerB.position.copy(shuttle.group.position).add(tmp);
+          // same angular size as they have for the visor, at the ship's distance
+          kickerA.scale.set(13.6 * SHUTTLE_SCALE, 13.6 * SHUTTLE_SCALE, 1);
+          kickerB.scale.set(6.8 * SHUTTLE_SCALE, 6.8 * SHUTTLE_SCALE, 1);
         }
         shuttle.group.visible = false; // no reflecting its own hull
         hullRT.texture.generateMipmaps = face === 5;
@@ -1567,6 +1572,8 @@ const SolarSystem = forwardRef(function SolarSystem({
           visorCam.position.y += astroState.s;
           kickerA.position.set(astro.position.x - 7, astro.position.y + 9, astro.position.z + 5);
           kickerB.position.set(astro.position.x + 6, astro.position.y + 4, astro.position.z - 4);
+          kickerA.scale.set(11, 11, 1); // back to visor sizing after a flight
+          kickerB.scale.set(5, 5, 1);
         }
         astro.visible = false;
         // mipmaps are regenerated for the whole cube on every unbind, so only
