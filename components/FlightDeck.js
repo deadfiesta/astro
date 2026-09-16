@@ -8,7 +8,8 @@ import { motion } from 'motion/react';
    phones and tablets an opt-in tilt mode: point the device where you want
    to go — tilt its top edge up to climb, down to dive, roll it left or right
    to turn. Propulsion is a vertical throttle slider, also nudged with
-   Shift/E (faster) and Ctrl/Q (slower). The scene reads the live values
+   Shift/E/+ (faster) and Space/Ctrl/Q/- (slower — hold Space to brake all
+   the way down). The scene reads the live values
    every frame through `input` (a ref: { yaw, pitch, throttle }) so no React
    re-render sits in the control loop. Escape or the Land button ends the
    flight. */
@@ -20,7 +21,12 @@ const STEER_KEYS = {
   ArrowDown: ['pitch', -1], s: ['pitch', -1], S: ['pitch', -1],
 };
 const FASTER_KEYS = new Set(['Shift', 'e', 'E', '=', '+']);
-const SLOWER_KEYS = new Set(['Control', 'q', 'Q', '-', '_']);
+const SLOWER_KEYS = new Set([' ', 'Spacebar', 'Control', 'q', 'Q', '-', '_']); // Space = brake
+// a key pressed with Shift down reports a different name than it does on
+// release once Shift has gone (E/e, +/=, _/-), which would leave it stuck in
+// the held set — so throttle keys are tracked under one canonical name
+const THROTTLE_ALIAS = { '+': '=', _: '-', Spacebar: ' ' };
+const throttleKey = (k) => THROTTLE_ALIAS[k] ?? (k.length === 1 ? k.toLowerCase() : k);
 
 // tilt feel: degrees of tilt from the neutral hold for full stick, and a
 // dead zone so a steady hand flies straight
@@ -67,7 +73,7 @@ export default function FlightDeck({ visible, input, onLand }) {
   const pads = useRef({ yaw: 0, pitch: 0 });
   const tiltIn = useRef({ yaw: 0, pitch: 0 });
   const tiltRest = useRef(null); // neutral (right, up) captured on enable
-  const nudge = useRef(0); // -1 / 0 / +1 while a throttle key is held
+  const thrKeys = useRef(new Set()); // throttle keys currently held (faster and slower)
 
   // write the combined stick to the ref the scene reads (cheap, any rate)
   const apply = useCallback(() => {
@@ -160,12 +166,9 @@ export default function FlightDeck({ visible, input, onLand }) {
         e.preventDefault();
         keys.current.add(e.key);
         recompute();
-      } else if (FASTER_KEYS.has(e.key)) {
-        e.preventDefault();
-        nudge.current = 1;
-      } else if (SLOWER_KEYS.has(e.key)) {
-        e.preventDefault();
-        nudge.current = -1;
+      } else if (FASTER_KEYS.has(e.key) || SLOWER_KEYS.has(e.key)) {
+        e.preventDefault(); // Space must not press a focused button or scroll
+        thrKeys.current.add(throttleKey(e.key));
       }
     };
     const up = (e) => {
@@ -173,17 +176,21 @@ export default function FlightDeck({ visible, input, onLand }) {
         keys.current.delete(e.key);
         recompute();
       } else if (FASTER_KEYS.has(e.key) || SLOWER_KEYS.has(e.key)) {
-        nudge.current = 0;
+        e.preventDefault();
+        thrKeys.current.delete(throttleKey(e.key));
       }
     };
     const blur = () => {
       keys.current.clear();
-      nudge.current = 0;
+      thrKeys.current.clear();
       recompute();
     };
-    // held throttle keys ramp the slider smoothly
+    // held throttle keys ramp the slider smoothly; faster and slower held
+    // together cancel out, and releasing one leaves the other in charge
     const tick = setInterval(() => {
-      if (nudge.current) setThrottleBoth(input.current.throttle + nudge.current * 0.03);
+      let n = 0;
+      for (const k of thrKeys.current) n += FASTER_KEYS.has(k) ? 1 : -1;
+      if (n) setThrottleBoth(input.current.throttle + Math.sign(n) * 0.03);
     }, 40);
     window.addEventListener('keydown', down);
     window.addEventListener('keyup', up);
@@ -260,7 +267,7 @@ export default function FlightDeck({ visible, input, onLand }) {
           🛬 Land
         </button>
         <div className={`deck-hint${tilt === 'denied' || tilt === 'silent' ? ' deck-hint-warn' : ''}`} aria-live="polite">
-          {tiltHint ?? <span className="deck-hint-keys">Arrows steer · Shift = faster</span>}
+          {tiltHint ?? <span className="deck-hint-keys">Arrows steer · Shift faster · Space slower</span>}
         </div>
       </div>
 
