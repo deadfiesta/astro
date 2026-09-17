@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { PAGES, TOTAL, systemComplete } from '@/lib/postcards';
 
@@ -7,7 +8,11 @@ import { PAGES, TOTAL, systemComplete } from '@/lib/postcards';
    you have flown past show the body's emoji and name and can be tapped to
    visit it; the rest sit greyed out with a question mark. Collect every
    world in a system and its page earns a gold star. */
-export default function StickerBook({ open, collected, onClose, onPick }) {
+export default function StickerBook({ open, collected, onClose, onPick, onReset }) {
+  // "Start over" asks once more before clearing — a stray tap must not
+  // wipe a kid's collection. The question resets whenever the book closes.
+  const [confirming, setConfirming] = useState(false);
+  useEffect(() => { if (!open) setConfirming(false); }, [open]);
   return (
     <AnimatePresence>
       {open && (
@@ -82,6 +87,21 @@ export default function StickerBook({ open, collected, onClose, onPick }) {
                 );
               })}
             </div>
+            {collected.size > 0 && (
+              <div className="book-foot">
+                {confirming ? (
+                  <>
+                    <span className="book-foot-text">Clear all {collected.size} postcards?</span>
+                    <button className="book-reset danger" onClick={() => { setConfirming(false); onReset(); }}>
+                      Yes, start over
+                    </button>
+                    <button className="book-reset" onClick={() => setConfirming(false)}>Keep them</button>
+                  </>
+                ) : (
+                  <button className="book-reset" onClick={() => setConfirming(true)}>🔄 Start over</button>
+                )}
+              </div>
+            )}
           </motion.div>
         </motion.div>
       )}

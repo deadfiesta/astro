@@ -82,6 +82,13 @@ export default function Home() {
     toastTimer.current = setTimeout(() => setToast(null), star ? 4500 : 3000);
   }, []);
   useEffect(() => () => clearTimeout(toastTimer.current), []);
+  const resetPostcards = useCallback(() => {
+    const empty = new Set();
+    collectedRef.current = empty;
+    setCollected(empty);
+    saveCollected(empty);
+    setToast(null);
+  }, []);
 
   // shown once the camera has arrived and come to a stop (onArrive below)
   const showSysInfo = useCallback(() => {
@@ -185,7 +192,7 @@ export default function Home() {
           bookOpen={bookOpen}
           onBook={() => setBookOpen((o) => !o)}
         />
-        <StickerBook open={bookOpen} collected={collected} onClose={() => setBookOpen(false)} onPick={pickFromBook} />
+        <StickerBook open={bookOpen} collected={collected} onClose={() => setBookOpen(false)} onPick={pickFromBook} onReset={resetPostcards} />
         <motion.div
           id="postcard-toast"
           className={toast?.star ? 'star' : ''}

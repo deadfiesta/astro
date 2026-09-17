@@ -1075,3 +1075,31 @@ body {
 @media (max-width: 479px) {
   #speedo { bottom: calc(196px + env(safe-area-inset-bottom)); padding: 6px 12px; }
 }
+
+/* start-over row at the foot of the sticker book */
+.book-foot {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1.5px solid rgba(170, 180, 224, 0.2);
+}
+.book-foot-text { margin-right: auto; font-size: 14px; font-weight: 700; color: var(--ink-dim); }
+.book-reset {
+  min-height: 40px;
+  padding: 0 14px;
+  border-radius: 12px;
+  border: 2px solid rgba(170, 180, 224, 0.35);
+  background: rgba(170, 180, 224, 0.1);
+  color: var(--ink);
+  font-family: var(--display);
+  font-size: 14px;
+  font-weight: 800;
+  cursor: pointer;
+}
+.book-reset.danger { border-color: rgba(255, 122, 60, 0.7); background: rgba(255, 122, 60, 0.18); }
+.book-reset:active { transform: scale(0.95); }
+.book-reset:focus-visible { outline: 3px solid var(--sun); outline-offset: 2px; }
