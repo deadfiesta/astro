@@ -1078,6 +1078,7 @@ const SolarSystem = forwardRef(function SolarSystem({
       raf = requestAnimationFrame(animate);
       const dt = Math.min(clock.getDelta(), 0.05);
       if (astro.visible && !reducedMotion) pulseAstronautLights(clock.elapsedTime);
+      if (shuttle.group.visible && !reducedMotion) shuttle.pulseLights(clock.elapsedTime);
       // catch any size change the events missed (rotation, split view,
       // browser chrome sliding away) — cheap: two layout reads per frame
       if (canvas.clientWidth !== view.w || canvas.clientHeight !== view.h) fit();
