@@ -13,6 +13,10 @@ import { SYSTEMS } from '@/lib/bodies';
 
 const CANVAS_PX = 150; // CSS size on desktop; drawn at device pixel ratio
 const RING_PAD = 6;
+// radar pulse: a ring sweeps from the centre to the rim, then the dish
+// rests before the next one (long gap so it reads as a ping, not a strobe)
+const PULSE_SWEEP = 1.6; // seconds the ring takes to cross the dish
+const PULSE_PERIOD = 4.8; // seconds from one ping to the next
 
 // how far (world units) the map radius reaches, from distance to nearest star
 function rangeFor(nearestD) {
@@ -48,6 +52,7 @@ export default function MiniMap({ visible, getMap }) {
     fit();
     window.addEventListener('resize', fit);
 
+    const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     let prev = performance.now();
     const draw = (now) => {
       raf = requestAnimationFrame(draw);
@@ -85,6 +90,24 @@ export default function MiniMap({ visible, getMap }) {
       // everything from here is clipped to the dish
       ctx.save();
       ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI * 2); ctx.clip();
+
+      // the ping: an expanding ring with a soft glow trailing inside it,
+      // fading as it nears the rim
+      if (!reducedMotion) {
+        const phase = ((now / 1000) % PULSE_PERIOD) / PULSE_SWEEP;
+        if (phase < 1) {
+          const pr = Math.max(1, phase * R);
+          const fade = (1 - phase) * (1 - phase);
+          const glow = ctx.createRadialGradient(cx, cy, Math.max(0, pr - R * 0.22), cx, cy, pr);
+          glow.addColorStop(0, 'rgba(120, 214, 255, 0)');
+          glow.addColorStop(1, `rgba(120, 214, 255, ${0.28 * fade})`);
+          ctx.fillStyle = glow;
+          ctx.beginPath(); ctx.arc(cx, cy, pr, 0, Math.PI * 2); ctx.fill();
+          ctx.strokeStyle = `rgba(160, 230, 255, ${0.85 * fade})`;
+          ctx.lineWidth = 1.5;
+          ctx.beginPath(); ctx.arc(cx, cy, pr, 0, Math.PI * 2); ctx.stroke();
+        }
+      }
 
       // other stars (and, at close range, the current star's orbit rings)
       for (const sys of SYSTEMS) {
