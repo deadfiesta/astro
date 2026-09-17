@@ -13,7 +13,7 @@ import {
 } from '@/lib/textures';
 import { buildAstronaut, pulseAstronautLights } from '@/lib/astronaut';
 import { buildShuttle, SHUTTLE_SCALE } from '@/lib/shuttle';
-import { buildSecrets, updateSecrets } from '@/lib/rocks';
+import { buildSecrets, revealSecrets, updateSecrets } from '@/lib/rocks';
 
 // chase-camera distances were tuned for the full-size model; this shrinks
 // them with the ship (a little less than SHUTTLE_SCALE, see the flight block).
@@ -534,6 +534,7 @@ const SolarSystem = forwardRef(function SolarSystem({
     if (moonMesh) byId.moon = { data: MOON, pivot: moonMesh, label: moonLabelRef };
     // secret postcards: unlabelled rocks and comets, tappable and collectable
     const secrets = buildSecrets(scene);
+    let secretsT = null; // seconds since the intro finished; null until then
     for (const r of secrets) {
       byId[r.data.id] = { data: r.data, pivot: r.pivot };
       pickables.push(...r.pickable);
@@ -1075,6 +1076,11 @@ const SolarSystem = forwardRef(function SolarSystem({
         if (b.moon) b.moon.rotation.y += 1.6 * spd * dt;
       }
       updateSecrets(secrets, dt, spd, clock.elapsedTime);
+      // the secret rocks slip in only after the planets have formed
+      if (intro.done && secretsT !== null && secretsT < Infinity) {
+        secretsT += dt;
+        if (revealSecrets(secrets, secretsT)) secretsT = Infinity;
+      }
 
       // formation intro: the nebula spirals in, bodies condense out of it,
       // orbit rings emerge, and the leftover dust dissipates
@@ -1133,6 +1139,7 @@ const SolarSystem = forwardRef(function SolarSystem({
       // tell the page the formation has finished (or was skipped) — once
       if (intro.done && !intro.readyFired) {
         intro.readyFired = true;
+        secretsT = 0;
         onReadyRef.current?.();
         // names drift in one after another, nearest to the camera first,
         // so the freshly formed system feels like it's being introduced
