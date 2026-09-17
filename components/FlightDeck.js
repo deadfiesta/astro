@@ -13,6 +13,8 @@ import { motion } from 'motion/react';
    `input` (a ref: { yaw, pitch, throttle }) so no React re-render sits in
    the control loop. Escape or the Land button ends the flight. */
 
+const START_THROTTLE = 0.05;
+
 const STEER_KEYS = {
   ArrowLeft: ['yaw', -1], a: ['yaw', -1], A: ['yaw', -1],
   ArrowRight: ['yaw', 1], d: ['yaw', 1], D: ['yaw', 1],
@@ -71,6 +73,9 @@ export default function FlightDeck({ visible, input, onLand }) {
     input.current.throttle = t;
     setThrottle(t);
   }, [input]);
+
+  // each take-off begins at the same gentle setting
+  useEffect(() => { if (visible) setThrottleBoth(START_THROTTLE); }, [visible, setThrottleBoth]);
 
   // keyboard
   useEffect(() => {

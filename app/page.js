@@ -11,6 +11,9 @@ import SystemPicker from '@/components/SystemPicker';
 import FlightDeck from '@/components/FlightDeck';
 import MiniMap from '@/components/MiniMap';
 
+// every flight starts at a gentle 5% — the pilot pushes the throttle up
+const START_THROTTLE = 0.05;
+
 // Three.js needs the browser — skip server rendering entirely
 const SolarSystem = dynamic(() => import('@/components/SolarSystem'), { ssr: false });
 
@@ -23,7 +26,7 @@ export default function Home() {
   const infoTimer = useRef(null);
   // fly mode: the shuttle's live stick/throttle, read by the scene each frame
   const [flying, setFlying] = useState(false);
-  const flightInput = useRef({ yaw: 0, pitch: 0, throttle: 0.35 });
+  const flightInput = useRef({ yaw: 0, pitch: 0, throttle: START_THROTTLE });
 
   // shown once the camera has arrived and come to a stop (onArrive below)
   const showSysInfo = useCallback(() => {
