@@ -14,6 +14,7 @@ import {
 import { buildAstronaut, pulseAstronautLights } from '@/lib/astronaut';
 import { buildShuttle, SHUTTLE_SCALE } from '@/lib/shuttle';
 import { buildSecrets, revealSecrets, updateSecrets } from '@/lib/rocks';
+import { buildBlackHole } from '@/lib/blackhole';
 
 // chase-camera distances were tuned for the full-size model; this shrinks
 // them with the ship (a little less than SHUTTLE_SCALE, see the flight block).
@@ -436,40 +437,13 @@ const SolarSystem = forwardRef(function SolarSystem({
       label.position.y = b.radius + (b.hasRings ? 2.6 : 1.8);
       pivot.add(label);
 
+      let bh = null;
       if (b.blackHole) {
-        // silhouette look: tight warm rim halo behind the black sphere,
-        // plus a tilted glowing accretion-disk ring
-        const halo = new THREE.Sprite(new THREE.SpriteMaterial({
-          map: sunGlowTexture(), transparent: true, depthWrite: false, color: '#FFB05C',
-        }));
-        halo.scale.set(b.radius * 2.7, b.radius * 2.7, 1);
-        pivot.add(halo);
-
-        const [dc, dctx] = makeCanvas(256, 16);
-        const dg = dctx.createLinearGradient(0, 0, 256, 0);
-        dg.addColorStop(0, '#FFF6D8');
-        dg.addColorStop(0.35, '#FFB05C');
-        dg.addColorStop(0.75, '#C4502A');
-        dg.addColorStop(1, 'rgba(120,30,10,0)');
-        dctx.fillStyle = dg;
-        dctx.fillRect(0, 0, 256, 16);
-        const diskGeo = new THREE.RingGeometry(b.radius * 1.35, b.radius * 2.9, 80);
-        const dPos = diskGeo.attributes.position;
-        const dUv = diskGeo.attributes.uv;
-        const dv = new THREE.Vector3();
-        for (let i = 0; i < dPos.count; i++) {
-          dv.fromBufferAttribute(dPos, i);
-          dUv.setXY(i, (dv.length() - b.radius * 1.35) / (b.radius * 1.55), 0.5);
-        }
-        const disk = new THREE.Mesh(diskGeo, new THREE.MeshBasicMaterial({
-          map: new THREE.CanvasTexture(dc), side: THREE.DoubleSide,
-          transparent: true, blending: THREE.AdditiveBlending, depthWrite: false,
-        }));
-        disk.rotation.x = Math.PI / 2;
-        disk.userData.id = b.id;
-        pickables.push(disk);
-        spinGroup.add(disk);
+        // stylised movie look: photon ring, swirling Doppler-lit accretion
+        // disk, lensed ring over the horizon, infalling sparks, faint jets
         spinGroup.rotation.z = 0.35; // tilt the disk for depth
+        bh = buildBlackHole(b, spinGroup, pivot);
+        pickables.push(...bh.pickables);
       } else if (isSun) {
         const glow = new THREE.Sprite(new THREE.SpriteMaterial({
           map: sunGlowTexture(), transparent: true, depthWrite: false,
@@ -525,7 +499,7 @@ const SolarSystem = forwardRef(function SolarSystem({
       // condensation order: the star ignites first, planets follow outward
       const delay = isSun ? 0.45 : 0.85 + planetIdx++ * 0.11;
       if (!intro.done) pivot.scale.setScalar(0.0001);
-      bodies.push({ data: b, pivot, mesh, moon, delay, label, angle: Math.random() * Math.PI * 2 });
+      bodies.push({ data: b, pivot, mesh, moon, delay, label, bh, angle: Math.random() * Math.PI * 2 });
     }
     }
 
@@ -1091,6 +1065,7 @@ const SolarSystem = forwardRef(function SolarSystem({
         b.pivot.position.set(Math.cos(b.angle) * d.orbit, 0, Math.sin(b.angle) * d.orbit);
         b.mesh.rotation.y += d.spinSpeed * spd * dt * 2.2;
         if (b.moon) b.moon.rotation.y += 1.6 * spd * dt;
+        if (b.bh) b.bh.update(dt, spd, camera, reducedMotion);
       }
       updateSecrets(secrets, dt, spd, clock.elapsedTime);
 
