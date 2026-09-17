@@ -8,7 +8,7 @@ import { motion } from 'motion/react';
    up/down pitch it, further from the middle turns harder — plus keyboard
    arrows or WASD (which also move the knob, so it doubles as a stick
    readout). Propulsion is a vertical throttle slider, also nudged with
-   Shift/E/+ (faster) and Space/Ctrl/Q/- (slower — hold Space to brake all
+   Shift/E/+ (faster) and Space/Q/- (slower — hold Space to brake all
    the way down). The scene reads the live values every frame through
    `input` (a ref: { yaw, pitch, throttle }) so no React re-render sits in
    the control loop. Escape or the Land button ends the flight. */
@@ -22,7 +22,7 @@ const STEER_KEYS = {
   ArrowDown: ['pitch', -1], s: ['pitch', -1], S: ['pitch', -1],
 };
 const FASTER_KEYS = new Set(['Shift', 'e', 'E', '=', '+']);
-const SLOWER_KEYS = new Set([' ', 'Spacebar', 'Control', 'q', 'Q', '-', '_']); // Space = brake
+const SLOWER_KEYS = new Set([' ', 'Spacebar', 'q', 'Q', '-', '_']); // Space = brake
 // a key pressed with Shift down reports a different name than it does on
 // release once Shift has gone (E/e, +/=, _/-), which would leave it stuck in
 // the held set — so throttle keys are tracked under one canonical name
