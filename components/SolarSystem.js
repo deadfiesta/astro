@@ -804,16 +804,22 @@ const SolarSystem = forwardRef(function SolarSystem({
     let fly = null;
     let lyShown = false;
     let labelDim = 1; // 0..1 multiplier on label opacity, eased per frame
-    function flyTo(pos, target, ly) {
+    // `gentle` (used for landing the shuttle): a slower trip with an
+    // ease-in-out, so the camera gathers itself before pulling back to the
+    // system view instead of leaping away from the ship
+    function flyTo(pos, target, ly, gentle = false) {
       if (reducedMotion) {
         camera.position.copy(pos);
         controls.target.copy(target);
         onArriveRef.current?.();
         return;
       }
+      const dist = camera.position.distanceTo(pos);
       // long interstellar hops take longer than local flights
-      const dur = THREE.MathUtils.clamp(camera.position.distanceTo(pos) / 300, 1.2, 3.2);
-      fly = { fromP: camera.position.clone(), fromT: controls.target.clone(), toP: pos, toT: target, t: 0, dur, ly };
+      const dur = gentle
+        ? THREE.MathUtils.clamp(dist / 90, 2.6, 4.5)
+        : THREE.MathUtils.clamp(dist / 300, 1.2, 3.2);
+      fly = { fromP: camera.position.clone(), fromT: controls.target.clone(), toP: pos, toT: target, t: 0, dur, ly, gentle };
     }
 
     // follow: approach = camera flies into a nice framing; afterwards it only
@@ -921,7 +927,7 @@ const SolarSystem = forwardRef(function SolarSystem({
         // in one frame and then fight the lerp. Relax the clamp for this
         // flight; it comes back when the camera arrives (see fly.t >= 1)
         controls.minDistance = 0;
-        flyTo(w.sysCenter.clone().add(w.homeOffset), w.sysCenter.clone());
+        flyTo(w.sysCenter.clone().add(w.homeOffset), w.sysCenter.clone(), undefined, true);
         onFlightLandRef.current?.(best);
         return true;
       },
@@ -1628,7 +1634,12 @@ const SolarSystem = forwardRef(function SolarSystem({
 
       if (fly) {
         fly.t += dt / fly.dur;
-        const k = fly.t >= 1 ? 1 : 1 - Math.pow(1 - fly.t, 3);
+        let k;
+        if (fly.t >= 1) k = 1;
+        else if (fly.gentle) {
+          // ease-in-out cubic: slow away, slow arrival
+          k = fly.t < 0.5 ? 4 * fly.t * fly.t * fly.t : 1 - Math.pow(-2 * fly.t + 2, 3) / 2;
+        } else k = 1 - Math.pow(1 - fly.t, 3);
         camera.position.lerpVectors(fly.fromP, fly.toP, k);
         controls.target.lerpVectors(fly.fromT, fly.toT, k);
         // light-year odometer counts up with the flight and stays on the
