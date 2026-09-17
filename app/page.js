@@ -158,6 +158,9 @@ export default function Home() {
   // but cheap insurance).
   useEffect(() => {
     const onKey = (e) => {
+      // a real key press proves a keyboard exists (e.g. an iPad with one
+      // attached, which CSS alone treats as touch-only): reveal the hints
+      document.documentElement.classList.add('has-keyboard');
       if (e.metaKey || e.ctrlKey || e.altKey || e.repeat) return;
       const tag = e.target?.tagName;
       if (tag === 'INPUT' && e.target.type !== 'range') return;

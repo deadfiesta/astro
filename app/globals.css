@@ -1118,8 +1118,9 @@ body {
   opacity: 0.85;
 }
 .ctl.active .key-hint { color: var(--sun); }
-/* no physical keyboard: hide the hints so the buttons stay clean */
+/* no physical keyboard: hide the hints so the buttons stay clean — until
+   the first real key press, which flags <html class="has-keyboard"> */
 @media (hover: none) and (pointer: coarse) {
-  .key-hint { display: none; }
-  .ctl, .land-btn { gap: 0; }
+  html:not(.has-keyboard) .key-hint { display: none; }
+  html:not(.has-keyboard) .ctl, html:not(.has-keyboard) .land-btn { gap: 0; }
 }
