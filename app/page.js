@@ -10,9 +10,34 @@ import ControlBar from '@/components/ControlBar';
 import SystemPicker from '@/components/SystemPicker';
 import FlightDeck from '@/components/FlightDeck';
 import MiniMap from '@/components/MiniMap';
+import StickerBook from '@/components/StickerBook';
+import { TOTAL, loadCollected, saveCollected, systemComplete, systemOf } from '@/lib/postcards';
 
 // every flight starts at a gentle 5% — the pilot pushes the throttle up
 const START_THROTTLE = 0.05;
+
+// a two-note chime when a postcard lands in the book (after a tap, so the
+// audio context is allowed); the completion fanfare adds a third note
+let audio = null;
+function chime(fanfare) {
+  try {
+    audio ??= new (window.AudioContext || window.webkitAudioContext)();
+    const notes = fanfare ? [523, 659, 784, 1047] : [660, 990];
+    notes.forEach((f, i) => {
+      const o = audio.createOscillator();
+      const g = audio.createGain();
+      o.type = 'sine';
+      o.frequency.value = f;
+      const t0 = audio.currentTime + i * 0.11;
+      g.gain.setValueAtTime(0.0001, t0);
+      g.gain.exponentialRampToValueAtTime(0.18, t0 + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.45);
+      o.connect(g).connect(audio.destination);
+      o.start(t0);
+      o.stop(t0 + 0.5);
+    });
+  } catch { /* no audio — the burst and toast still show */ }
+}
 
 // Three.js needs the browser — skip server rendering entirely
 const SolarSystem = dynamic(() => import('@/components/SolarSystem'), { ssr: false });
@@ -27,6 +52,35 @@ export default function Home() {
   // fly mode: the shuttle's live stick/throttle, read by the scene each frame
   const [flying, setFlying] = useState(false);
   const flightInput = useRef({ yaw: 0, pitch: 0, throttle: START_THROTTLE });
+
+  // postcard collecting: ids of bodies flown past, mirrored into a ref the
+  // scene reads each frame, saved to the browser between visits
+  const [collected, setCollected] = useState(() => new Set());
+  const collectedRef = useRef(collected);
+  const [bookOpen, setBookOpen] = useState(false);
+  const [toast, setToast] = useState(null); // { body, star } shown briefly
+  const toastTimer = useRef(null);
+  useEffect(() => {
+    const saved = loadCollected();
+    collectedRef.current = saved;
+    setCollected(saved);
+  }, []);
+  const onPostcard = useCallback((id) => {
+    const body = CARDS.find((b) => b.id === id);
+    if (!body || collectedRef.current.has(id)) return;
+    const next = new Set(collectedRef.current);
+    next.add(id);
+    collectedRef.current = next;
+    setCollected(next);
+    saveCollected(next);
+    const sys = systemOf(id);
+    const star = !!sys && systemComplete(sys.id, next);
+    chime(star);
+    setToast({ body, star, system: sys });
+    clearTimeout(toastTimer.current);
+    toastTimer.current = setTimeout(() => setToast(null), star ? 4500 : 3000);
+  }, []);
+  useEffect(() => () => clearTimeout(toastTimer.current), []);
 
   // shown once the camera has arrived and come to a stop (onArrive below)
   const showSysInfo = useCallback(() => {
@@ -94,6 +148,11 @@ export default function Home() {
   const onFlightLand = useCallback((sys) => setSystemId(sys.id), []);
   const getMap = useCallback(() => sceneRef.current?.mapSnapshot() ?? null, []);
 
+  const pickFromBook = useCallback((id) => {
+    setBookOpen(false);
+    select(id);
+  }, [select]);
+
   const body = CARDS.find((b) => b.id === selectedId) ?? null;
   const system = SYSTEMS.find((s) => s.id === systemId) ?? SYSTEMS[0];
 
@@ -111,6 +170,8 @@ export default function Home() {
           onArrive={showSysInfo}
           onReady={onSceneReady}
           onFlightLand={onFlightLand}
+          onPostcard={onPostcard}
+          collectedRef={collectedRef}
         />
         <ControlBar
           visible={uiVisible}
@@ -118,7 +179,32 @@ export default function Home() {
           onSpeed={setSpeed}
           flying={flying}
           onFly={toggleFly}
+          postcards={collected.size}
+          total={TOTAL}
+          bookOpen={bookOpen}
+          onBook={() => setBookOpen((o) => !o)}
         />
+        <StickerBook open={bookOpen} collected={collected} onClose={() => setBookOpen(false)} onPick={pickFromBook} />
+        <motion.div
+          id="postcard-toast"
+          className={toast?.star ? 'star' : ''}
+          initial={false}
+          style={{ x: '-50%' }}
+          animate={toast ? { opacity: 1, y: 0, scale: 1 } : { opacity: 0, y: -10, scale: 0.96 }}
+          transition={{ duration: 0.35, ease: 'easeOut' }}
+          aria-live="polite"
+        >
+          {toast && (
+            <>
+              <span className="toast-emoji" aria-hidden="true">{toast.star ? '⭐' : toast.body.emoji}</span>
+              <span className="toast-text">
+                {toast.star
+                  ? `You found every world in ${toast.system.name}!`
+                  : `Postcard from ${toast.body.name}!`}
+              </span>
+            </>
+          )}
+        </motion.div>
         <SystemPicker visible={uiVisible && !flying} systemId={systemId} onPick={goToSystem} />
         <PlanetPicker visible={uiVisible && !flying} system={system} selectedId={selectedId} onSelect={select} />
         <FlightDeck visible={uiVisible && flying} input={flightInput} onLand={land} />

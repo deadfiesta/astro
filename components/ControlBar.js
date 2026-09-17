@@ -4,7 +4,7 @@ import { motion } from 'motion/react';
 
 /* One slider rules the clock: far left is paused, far right is the old
    rocket speed (3x), with turtle/normal pace living along the way. */
-export default function ControlBar({ visible, speed, onSpeed, flying, onFly }) {
+export default function ControlBar({ visible, speed, onSpeed, flying, onFly, postcards, total, bookOpen, onBook }) {
   return (
     <motion.div
       className={`topbar${visible ? '' : ' ui-off'}`}
@@ -34,6 +34,15 @@ export default function ControlBar({ visible, speed, onSpeed, flying, onFly }) {
           aria-pressed={flying}
           onClick={onFly}
         >🛸</button>
+        <button
+          className={`ctl book-btn${bookOpen ? ' active' : ''}`}
+          aria-label={`Open my postcards, ${postcards} of ${total} collected`}
+          aria-pressed={bookOpen}
+          onClick={onBook}
+        >
+          📮
+          <span className="book-badge" aria-hidden="true">{postcards}</span>
+        </button>
       </div>
     </motion.div>
   );

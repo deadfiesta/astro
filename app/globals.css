@@ -890,3 +890,154 @@ body {
   #minimap { padding: 6px 6px 8px; border-radius: 20px; }
   .minimap-caption { font-size: 12px; max-width: 112px; }
 }
+
+/* ---------- postcard collecting ---------- */
+/* the top-bar button wears a little count badge */
+.book-btn { position: relative; }
+.book-badge {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--sun);
+  color: #3A2500;
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 22px;
+  text-align: center;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
+}
+
+/* the "Postcard from Mars!" toast under the top bar */
+#postcard-toast {
+  position: fixed;
+  left: 50%;
+  top: calc(max(10px, env(safe-area-inset-top)) + 74px);
+  z-index: 7;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: max-content;
+  max-width: min(420px, calc(100vw - 24px));
+  padding: 10px 18px;
+  border-radius: 999px;
+  background: var(--panel);
+  border: 2px solid rgba(255, 201, 60, 0.55);
+  color: var(--ink);
+  font-family: var(--display);
+  font-size: clamp(15px, 3vw, 19px);
+  font-weight: 800;
+  pointer-events: none;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+}
+#postcard-toast.star { border-color: var(--sun); background: rgba(255, 201, 60, 0.22); }
+.toast-emoji { font-size: 26px; line-height: 1; }
+
+/* the sticker book */
+#book-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  background: rgba(7, 11, 33, 0.72);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  display: grid;
+  place-items: center;
+  padding: 16px;
+}
+#book {
+  width: min(720px, 100%);
+  max-height: calc(100vh - 32px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+  display: flex;
+  flex-direction: column;
+  background: var(--panel);
+  border: 3px solid var(--sun);
+  border-radius: var(--radius);
+  padding: 16px 18px 12px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
+  font-family: var(--display);
+  color: var(--ink);
+}
+.book-head { display: flex; align-items: center; gap: 12px; }
+#book-title { margin: 0; font-size: clamp(22px, 4.5vw, 30px); font-weight: 800; color: var(--sun); }
+.book-count {
+  padding: 4px 12px;
+  border-radius: 999px;
+  background: rgba(255, 201, 60, 0.18);
+  border: 1.5px solid rgba(255, 201, 60, 0.45);
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+.book-close {
+  margin-left: auto;
+  min-width: 48px;
+  min-height: 48px;
+  border-radius: 14px;
+  border: 2px solid rgba(170, 180, 224, 0.35);
+  background: rgba(170, 180, 224, 0.12);
+  color: var(--ink);
+  font-size: 22px;
+  cursor: pointer;
+}
+.book-hint { margin: 8px 0 10px; font-size: 15px; font-weight: 700; color: var(--ink-dim); }
+.book-pages {
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding-right: 4px;
+  -webkit-overflow-scrolling: touch;
+}
+.book-page {
+  border: 2px solid rgba(170, 180, 224, 0.22);
+  border-radius: 18px;
+  padding: 10px 12px 12px;
+  background: rgba(13, 19, 48, 0.55);
+}
+.book-page.done { border-color: rgba(255, 201, 60, 0.7); background: rgba(255, 201, 60, 0.08); }
+.page-head { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+.page-emoji { font-size: 22px; line-height: 1; }
+.page-name { font-size: 17px; font-weight: 800; }
+.page-progress { margin-left: auto; font-size: 14px; font-weight: 800; color: var(--ink-dim); }
+.book-page.done .page-progress { color: var(--sun); }
+.stamps {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(84px, 1fr));
+  gap: 8px;
+}
+.stamp {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-height: 78px;
+  padding: 8px 6px;
+  border-radius: 14px;
+  border: 2px dashed rgba(170, 180, 224, 0.3);
+  background: rgba(170, 180, 224, 0.06);
+  color: var(--ink);
+  font-family: var(--display);
+  cursor: pointer;
+  transition: transform 0.12s ease;
+}
+.stamp.got {
+  border-style: solid;
+  border-color: var(--stamp-color, var(--sun));
+  background: color-mix(in srgb, var(--stamp-color, var(--sun)) 18%, transparent);
+}
+.stamp.got:active { transform: scale(0.94); }
+.stamp.got:focus-visible { outline: 3px solid var(--sun); outline-offset: 2px; }
+.stamp.missing { cursor: default; opacity: 0.55; }
+.stamp-emoji { font-size: 28px; line-height: 1; }
+.stamp.missing .stamp-emoji { color: var(--ink-dim); font-weight: 800; }
+.stamp-name { font-size: 12px; font-weight: 800; text-align: center; line-height: 1.15; }
+@media (max-width: 479px) {
+  .app-title { font-size: 16px; padding: 8px 12px; }
+  .ctl { min-width: 50px; min-height: 50px; font-size: 22px; }
+  .stamps { grid-template-columns: repeat(auto-fill, minmax(72px, 1fr)); }
+  .stamp { min-height: 70px; }
+}

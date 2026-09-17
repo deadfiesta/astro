@@ -6,6 +6,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { CSS2DRenderer, CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
 import { MOON, SYSTEMS } from '@/lib/bodies';
+import { ALL_IDS as POSTCARD_IDS, collectRadius } from '@/lib/postcards';
 import {
   makeCanvas, mulberry, rockyTexture, ringTexture, sunTexture, sunGlowTexture,
   textureFor, nebulaSkyTexture, softDotTexture,
@@ -52,6 +53,7 @@ const FLIGHT_BOUND = 1500; // soft edge of the map, from the origin
 
 const SolarSystem = forwardRef(function SolarSystem({
   selectedId, speed, paused, flying, flightInput, onSelect, onArrive, onReady, onFlightLand,
+  onPostcard, collectedRef,
 }, ref) {
   const wrapRef = useRef(null); // the canvas is created per mount, see below
   const [glFailed, setGlFailed] = useState(false);
@@ -66,9 +68,11 @@ const SolarSystem = forwardRef(function SolarSystem({
   const onArriveRef = useRef(onArrive);
   const onReadyRef = useRef(onReady);
   const onFlightLandRef = useRef(onFlightLand);
+  const onPostcardRef = useRef(onPostcard);
   const flyingRef = useRef(flying);
   useEffect(() => { flyingRef.current = flying; }, [flying]);
   useEffect(() => { onFlightLandRef.current = onFlightLand; }, [onFlightLand]);
+  useEffect(() => { onPostcardRef.current = onPostcard; }, [onPostcard]);
   useEffect(() => { speedRef.current = speed; }, [speed]);
   useEffect(() => { pausedRef.current = paused; }, [paused]);
   useEffect(() => { onSelectRef.current = onSelect; }, [onSelect]);
@@ -584,6 +588,27 @@ const SolarSystem = forwardRef(function SolarSystem({
     shuttle.group.visible = false;
     scene.add(shuttle.group, shuttle.exhaust); // exhaust trails in world space
     shuttle.setEnvMap(hullRT.texture); // live mirror of the scene on the paint
+    // postcard collecting: hover near a body for a moment while flying
+    const postcard = { id: null, dwell: 0 };
+    const POSTCARD_SET = new Set(POSTCARD_IDS);
+    const bursts = []; // { sprite, age, life, r }
+    const burstTex = sunGlowTexture();
+    function postcardBurst(ent) {
+      const b = ent.data;
+      const r = Math.max(b.radius, 0.5);
+      // two rings of light rushing outward from the body, in its own colour
+      for (let k = 0; k < 2; k++) {
+        const sp = new THREE.Sprite(new THREE.SpriteMaterial({
+          map: burstTex, color: k ? '#FFFFFF' : b.color, transparent: true, opacity: 0.9,
+          depthWrite: false, depthTest: false, blending: THREE.AdditiveBlending,
+        }));
+        ent.pivot.getWorldPosition(sp.position);
+        sp.scale.setScalar(r * 2);
+        sp.renderOrder = 9;
+        scene.add(sp);
+        bursts.push({ sprite: sp, age: -k * 0.12, life: 0.9, r });
+      }
+    }
     const flight = {
       on: false,
       heading: 0, // yaw, rad
@@ -1448,6 +1473,22 @@ const SolarSystem = forwardRef(function SolarSystem({
         }
       }
 
+      // postcard bursts: swell and fade, then leave the scene
+      for (let i = bursts.length - 1; i >= 0; i--) {
+        const bu = bursts[i];
+        bu.age += dt;
+        if (bu.age < 0) continue;
+        const k = bu.age / bu.life;
+        if (k >= 1) {
+          scene.remove(bu.sprite);
+          bu.sprite.material.dispose();
+          bursts.splice(i, 1);
+          continue;
+        }
+        bu.sprite.scale.setScalar(bu.r * (2 + k * 7));
+        bu.sprite.material.opacity = 0.9 * (1 - k) * (1 - k);
+      }
+
       // fly mode: steer the shuttle from the flight deck's inputs and chase
       // it with the camera. Heading/pitch are plain angles (pitch clamped)
       // so the horizon never flips on a young pilot; banking is cosmetic
@@ -1476,6 +1517,30 @@ const SolarSystem = forwardRef(function SolarSystem({
         shuttle.bank.rotation.z = flight.bankAngle;
         shuttle.bank.position.y = Math.sin(flight.time * 2.3) * 0.04 * SHUTTLE_SCALE;
         shuttle.setThrust(inp.throttle, flight.time);
+
+        // postcards: the nearest uncollected body within reach; linger on
+        // it for a moment and it's yours (dwell resets when you leave)
+        {
+          const have = collectedRef?.current;
+          let bestId = null, bestD = Infinity;
+          for (const id in byId) {
+            if (!POSTCARD_SET.has(id) || have?.has(id)) continue;
+            const ent = byId[id];
+            ent.pivot.getWorldPosition(tmp3);
+            const d = tmp3.distanceTo(shuttle.group.position) - collectRadius(ent.data);
+            if (d < 0 && d < bestD) { bestD = d; bestId = id; }
+          }
+          if (bestId !== postcard.id) { postcard.id = bestId; postcard.dwell = 0; }
+          if (bestId) {
+            postcard.dwell += dt;
+            if (postcard.dwell >= 0.7) {
+              postcard.id = null;
+              postcard.dwell = 0;
+              postcardBurst(byId[bestId]);
+              onPostcardRef.current?.(bestId);
+            }
+          }
+        }
 
         // chase camera: behind and a little above, looking past the nose;
         // it slides into place over the first second after take-off
