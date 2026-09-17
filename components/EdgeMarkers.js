@@ -3,15 +3,17 @@
 import { useEffect, useRef } from 'react';
 import { SYSTEMS } from '@/lib/bodies';
 
-/* Fly-mode waypoints: when a star system is off screen — above, below,
-   beside or behind the shuttle — a small chip with its emoji, name and an
-   arrow sits on the screen edge in its direction and slides along the
-   edge as you turn. A system straight overhead shows at the top pointing
-   up; one under you shows at the bottom. On-screen systems get no chip.
+/* Fly-mode overhead/underfoot marker: while flying over or under the
+   nearest star system, if it has slipped off the top or bottom of the
+   screen a small chip with its emoji, name and an arrow sits on that edge
+   and slides along it as you turn. Only the nearest system, only when it
+   is close, and only when it is above or below — systems beside or far
+   away stay quiet so the view doesn't fill with chips.
    Positions come from the scene each frame (NDC x/y per system) and are
    written straight to the DOM — no React re-render in the loop. */
 
-const SHOW_WITHIN = 1400; // world units; farther systems stay quiet
+const SHOW_WITHIN = 420; // world units — "flying over" range; farther systems stay quiet
+const VERTICAL_BIAS = 1.15; // the direction must be clearly more up/down than sideways
 const PAD_X = 14;
 
 export default function EdgeMarkers({ visible, getMarkers }) {
@@ -30,12 +32,17 @@ export default function EdgeMarkers({ visible, getMarkers }) {
       const W = window.innerWidth, H = window.innerHeight;
       // keep chips clear of the top bar and the flight deck
       const padTop = 92, padBottom = H < 700 ? 230 : 210;
+      let nearest = -1;
+      for (let i = 0; i < rows.length; i++) {
+        if (nearest < 0 || rows[i].dist < rows[nearest].dist) nearest = i;
+      }
       for (let i = 0; i < rows.length; i++) {
         const el = refs.current[i];
         if (!el) continue;
         const m = rows[i];
         const onScreen = !m.behind && Math.abs(m.x) < 0.92 && Math.abs(m.y) < 0.85;
-        if (onScreen || m.dist > SHOW_WITHIN) { el.style.opacity = '0'; continue; }
+        const vertical = Math.abs(m.y) > Math.abs(m.x) * VERTICAL_BIAS;
+        if (i !== nearest || onScreen || !vertical || m.dist > SHOW_WITHIN) { el.style.opacity = '0'; continue; }
         // push the direction out to the NDC square's edge
         const k = 1 / Math.max(Math.abs(m.x), Math.abs(m.y), 1e-6);
         const nx = m.x * k, ny = m.y * k;
