@@ -534,7 +534,6 @@ const SolarSystem = forwardRef(function SolarSystem({
     if (moonMesh) byId.moon = { data: MOON, pivot: moonMesh, label: moonLabelRef };
     // secret postcards: unlabelled rocks and comets, tappable and collectable
     const secrets = buildSecrets(scene);
-    let secretsT = null; // seconds since the intro finished; null until then
     for (const r of secrets) {
       byId[r.data.id] = { data: r.data, pivot: r.pivot };
       pickables.push(...r.pickable);
@@ -1076,11 +1075,6 @@ const SolarSystem = forwardRef(function SolarSystem({
         if (b.moon) b.moon.rotation.y += 1.6 * spd * dt;
       }
       updateSecrets(secrets, dt, spd, clock.elapsedTime);
-      // the secret rocks slip in only after the planets have formed
-      if (intro.done && secretsT !== null && secretsT < Infinity) {
-        secretsT += dt;
-        if (revealSecrets(secrets, secretsT)) secretsT = Infinity;
-      }
 
       // formation intro: the nebula spirals in, bodies condense out of it,
       // orbit rings emerge, and the leftover dust dissipates
@@ -1122,6 +1116,7 @@ const SolarSystem = forwardRef(function SolarSystem({
           const e = p === 0 ? 0 : 1 + (c + 1) * Math.pow(p - 1, 3) + c * Math.pow(p - 1, 2);
           b.pivot.scale.setScalar(Math.max(0.0001, e));
         }
+        revealSecrets(secrets, T); // the hidden rocks condense alongside
         const fade = THREE.MathUtils.clamp((T - 1.5) / 0.8, 0, 1);
         for (const f of introFades) f.mat.opacity = f.target * fade;
         if (allDone && fade >= 1 && T > 2.3) {
@@ -1139,7 +1134,7 @@ const SolarSystem = forwardRef(function SolarSystem({
       // tell the page the formation has finished (or was skipped) — once
       if (intro.done && !intro.readyFired) {
         intro.readyFired = true;
-        secretsT = 0;
+        revealSecrets(secrets, Infinity); // reduced motion skips the intro
         onReadyRef.current?.();
         // names drift in one after another, nearest to the camera first,
         // so the freshly formed system feels like it's being introduced
