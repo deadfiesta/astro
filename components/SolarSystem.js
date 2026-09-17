@@ -130,6 +130,11 @@ const SolarSystem = forwardRef(function SolarSystem({
     mapSnapshot() {
       return world.current?.mapSnapshot() ?? null;
     },
+    // where each star system sits relative to the screen, for the fly-mode
+    // edge markers (null when not flying)
+    edgeMarkers() {
+      return world.current?.edgeMarkers() ?? null;
+    },
     resetView() {
       const w = world.current;
       if (!w) return;
@@ -595,6 +600,8 @@ const SolarSystem = forwardRef(function SolarSystem({
     shuttle.group.visible = false;
     scene.add(shuttle.group, shuttle.exhaust); // exhaust trails in world space
     shuttle.setEnvMap(hullRT.texture); // live mirror of the scene on the paint
+    // reusable per-system rows for edgeMarkers(): NDC x/y, behind flag, distance
+    const markerSnap = SYSTEMS.map((sys) => ({ id: sys.id, x: 0, y: 0, behind: false, dist: 0 }));
     // postcard collecting: hover near a body for a moment while flying
     const postcard = { id: null, dwell: 0 };
     const POSTCARD_SET = new Set(POSTCARD_IDS);
@@ -831,6 +838,27 @@ const SolarSystem = forwardRef(function SolarSystem({
       // where the shuttle is, which way it points, every star, and the live
       // planet positions of the nearest system — enough for a radar view.
       // Reuses one object so the map's redraw loop allocates nothing
+      edgeMarkers() {
+        if (!flight.on) return null;
+        for (let i = 0; i < SYSTEMS.length; i++) {
+          const sys = SYSTEMS[i];
+          const m = markerSnap[i];
+          tmpDir.set(sys.center[0], sys.center[1], sys.center[2]);
+          m.dist = tmpDir.distanceTo(shuttle.group.position);
+          // camera space first: anything with z > 0 is behind the lens
+          tmpDir.applyMatrix4(camera.matrixWorldInverse);
+          m.behind = tmpDir.z > 0;
+          if (m.behind) {
+            // behind us: point the way you'd turn, mirrored through the centre
+            const len = Math.hypot(tmpDir.x, tmpDir.y) || 1;
+            m.x = -tmpDir.x / len * 2; m.y = -tmpDir.y / len * 2;
+          } else {
+            tmpDir.set(sys.center[0], sys.center[1], sys.center[2]).project(camera);
+            m.x = tmpDir.x; m.y = tmpDir.y;
+          }
+        }
+        return markerSnap;
+      },
       mapSnapshot() {
         if (!flight.on) return null;
         const snap = mapSnap;

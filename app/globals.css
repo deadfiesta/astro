@@ -1103,3 +1103,32 @@ body {
 .book-reset.danger { border-color: rgba(255, 122, 60, 0.7); background: rgba(255, 122, 60, 0.18); }
 .book-reset:active { transform: scale(0.95); }
 .book-reset:focus-visible { outline: 3px solid var(--sun); outline-offset: 2px; }
+
+/* ---------- fly mode: off-screen system markers ---------- */
+#edge-markers { position: fixed; inset: 0; z-index: 5; pointer-events: none; }
+.edge-marker {
+  position: absolute;
+  left: 0;
+  top: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px 5px 8px;
+  border-radius: 999px;
+  background: var(--panel);
+  border: 2px solid rgba(159, 212, 255, 0.5);
+  color: var(--ink);
+  font-family: var(--display);
+  font-size: 13px;
+  font-weight: 800;
+  white-space: nowrap;
+  opacity: 0;
+  transition: opacity 0.25s ease;
+  will-change: transform;
+}
+.edge-arrow { display: inline-block; color: #9FD4FF; font-size: 15px; line-height: 1; }
+.edge-dist { font-size: 11px; color: var(--ink-dim); font-variant-numeric: tabular-nums; }
+@media (max-width: 479px) {
+  .edge-marker { font-size: 12px; padding: 4px 8px 4px 6px; }
+  .edge-dist { display: none; }
+}
