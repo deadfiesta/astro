@@ -152,6 +152,25 @@ export default function Home() {
     setFlying((f) => !f);
   }, []);
   const land = useCallback(() => setFlying(false), []);
+
+  // hotkeys: F flies / lands, L lands, P opens the sticker book, Escape
+  // closes it. Ignored while typing in a text field (there are none today,
+  // but cheap insurance).
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.metaKey || e.ctrlKey || e.altKey || e.repeat) return;
+      const tag = e.target?.tagName;
+      if (tag === 'INPUT' && e.target.type !== 'range') return;
+      if (tag === 'TEXTAREA') return;
+      const k = e.key.toLowerCase();
+      if (k === 'f') { e.preventDefault(); toggleFly(); }
+      else if (k === 'p') { e.preventDefault(); setBookOpen((o) => !o); }
+      else if (k === 'l') { if (flying) { e.preventDefault(); land(); } }
+      else if (k === 'escape' && bookOpen) { setBookOpen(false); }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [toggleFly, land, flying, bookOpen]);
   // the scene reports which star system the shuttle came down at
   const onFlightLand = useCallback((sys) => setSystemId(sys.id), []);
   const getMap = useCallback(() => sceneRef.current?.mapSnapshot() ?? null, []);

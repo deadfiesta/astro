@@ -1103,3 +1103,23 @@ body {
 .book-reset.danger { border-color: rgba(255, 122, 60, 0.7); background: rgba(255, 122, 60, 0.18); }
 .book-reset:active { transform: scale(0.95); }
 .book-reset:focus-visible { outline: 3px solid var(--sun); outline-offset: 2px; }
+
+/* ---------- hotkey hints: a tiny letter under a button's emoji ---------- */
+.ctl, .land-btn { flex-direction: column; gap: 1px; }
+.ctl { display: flex; align-items: center; justify-content: center; }
+.land-btn { display: flex; align-items: center; justify-content: center; }
+.key-hint {
+  font-family: var(--display);
+  font-size: 9px;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: 0.04em;
+  color: var(--ink-dim);
+  opacity: 0.85;
+}
+.ctl.active .key-hint { color: var(--sun); }
+/* no physical keyboard: hide the hints so the buttons stay clean */
+@media (hover: none) and (pointer: coarse) {
+  .key-hint { display: none; }
+  .ctl, .land-btn { gap: 0; }
+}
