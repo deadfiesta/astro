@@ -6,7 +6,7 @@ import { motion } from 'motion/react';
 /* Fly-mode speedometer: a pill at the bottom centre that slides in whenever
    the shuttle's speed is changing and slips away ~1.6 s after it settles.
    Speed comes from the scene's map snapshot (the eased flight speed, world
-   units/s). Earth is 2 units across, so it reads as "Earths a second" —
+   units/s). Earth is 2 units across, so it reads as "Earths per sec" —
    a size kids already know from the planet cards. */
 
 const HOLD = 1.6; // seconds the readout lingers after the speed stops changing
@@ -15,8 +15,8 @@ const STEP = 0.08; // per-frame change (world units/s) that counts as "changing"
 function label(speed) {
   const earths = speed / 2;
   if (earths < 0.05) return 'Drifting…';
-  if (earths < 10) return `${earths.toFixed(1)} Earths a second`;
-  return `${Math.round(earths)} Earths a second`;
+  if (earths < 10) return `${earths.toFixed(1)} Earths per sec`;
+  return `${Math.round(earths)} Earths per sec`;
 }
 
 function mood(speed) {
