@@ -49,6 +49,7 @@ const FEATURE_VIEWS = {
 // between systems takes about fifteen seconds
 const FLIGHT_YAW_RATE = 1.15;
 const FLIGHT_PITCH_RATE = 0.95;
+const MIN_ZOOM = 4; // OrbitControls minDistance — how close a planet can be zoomed
 const FLIGHT_MAX_SPEED = 70;
 const FLIGHT_BOUND = 1500; // soft edge of the map, from the origin
 
@@ -216,7 +217,7 @@ const SolarSystem = forwardRef(function SolarSystem({
     // one finger rotates; two fingers pinch-zoom AND pan around the system
     controls.enablePan = true;
     controls.screenSpacePanning = true;
-    controls.minDistance = 4;
+    controls.minDistance = MIN_ZOOM;
     controls.maxDistance = 320;
     controls.touches.ONE = THREE.TOUCH.ROTATE;
     controls.touches.TWO = THREE.TOUCH.DOLLY_PAN;
@@ -895,8 +896,13 @@ const SolarSystem = forwardRef(function SolarSystem({
         shuttle.group.visible = false;
         shuttle.setThrust(0);
         controls.enabled = true;
-        controls.target.copy(shuttle.group.position);
-        if (quiet || selectedRef.current) return true;
+        // leave controls.target where the chase camera was looking (a touch
+        // ahead of the ship) so the landing flight starts from the exact
+        // current view — snapping it to the ship's centre nodded the camera
+        if (quiet || selectedRef.current) {
+          controls.target.copy(shuttle.group.position);
+          return true;
+        }
         // land at whichever star system the pilot ended up nearest
         let best = SYSTEMS[0];
         let bestD = Infinity;
@@ -910,6 +916,11 @@ const SolarSystem = forwardRef(function SolarSystem({
         w.homeOffset.copy(systemViewOffset(best));
         w.curSysId = best.id;
         w.curLy = best.ly;
+        // the chase camera sits ~3 units out, inside OrbitControls'
+        // minDistance (4): its per-frame update would shove the camera out
+        // in one frame and then fight the lerp. Relax the clamp for this
+        // flight; it comes back when the camera arrives (see fly.t >= 1)
+        controls.minDistance = 0;
         flyTo(w.sysCenter.clone().add(w.homeOffset), w.sysCenter.clone());
         onFlightLandRef.current?.(best);
         return true;
@@ -1638,6 +1649,7 @@ const SolarSystem = forwardRef(function SolarSystem({
             motionAnimate(lyRef.current, { opacity: 0 }, { duration: 0.6, ease: 'easeOut' });
           }
           fly = null;
+          controls.minDistance = MIN_ZOOM; // restored after a landing flight
           onArriveRef.current?.(); // camera at rest — safe to show arrival UI
         }
       }
