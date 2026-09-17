@@ -10,6 +10,7 @@ import ControlBar from '@/components/ControlBar';
 import SystemPicker from '@/components/SystemPicker';
 import FlightDeck from '@/components/FlightDeck';
 import MiniMap from '@/components/MiniMap';
+import SpeedReadout from '@/components/SpeedReadout';
 import StickerBook from '@/components/StickerBook';
 import { TOTAL, loadCollected, saveCollected, systemComplete, systemOf } from '@/lib/postcards';
 
@@ -213,6 +214,7 @@ export default function Home() {
         <PlanetPicker visible={uiVisible && !flying} system={system} selectedId={selectedId} onSelect={select} />
         <FlightDeck visible={uiVisible && flying} input={flightInput} onLand={land} />
         <MiniMap visible={uiVisible && flying} getMap={getMap} />
+        <SpeedReadout visible={uiVisible && flying} getMap={getMap} />
         <motion.div
           id="credit"
           initial={{ opacity: 0 }}
