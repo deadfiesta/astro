@@ -30,8 +30,12 @@ export default function EdgeMarkers({ visible, getMarkers }) {
       const rows = getMarkers();
       if (!rows) return;
       const W = window.innerWidth, H = window.innerHeight;
-      // keep chips clear of the top bar and the flight deck
-      const padTop = 92, padBottom = H < 700 ? 230 : 210;
+      // the chip sits right on the edge: just under the top bar, or just
+      // above the speed readout between the throttle and the joystick
+      const padTop = 82, padBottom = 104;
+      const narrow = W < 480;
+      // at the bottom, keep clear of the throttle (left) and joystick (right)
+      const bottomMinX = narrow ? 110 : 150, bottomMaxX = W - (narrow ? 165 : 210);
       let nearest = -1;
       for (let i = 0; i < rows.length; i++) {
         if (nearest < 0 || rows[i].dist < rows[nearest].dist) nearest = i;
@@ -43,13 +47,15 @@ export default function EdgeMarkers({ visible, getMarkers }) {
         const onScreen = !m.behind && Math.abs(m.x) < 0.92 && Math.abs(m.y) < 0.85;
         const vertical = Math.abs(m.y) > Math.abs(m.x) * VERTICAL_BIAS;
         if (i !== nearest || onScreen || !vertical || m.dist > SHOW_WITHIN) { el.style.opacity = '0'; continue; }
-        // push the direction out to the NDC square's edge
-        const k = 1 / Math.max(Math.abs(m.x), Math.abs(m.y), 1e-6);
-        const nx = m.x * k, ny = m.y * k;
+        // pin to the top or bottom edge by which side the system is on,
+        // and slide along it to the system's horizontal direction
+        const above = m.y > 0;
+        const nx = m.x / Math.max(Math.abs(m.y), 1e-6);
         let px = ((nx + 1) / 2) * W;
-        let py = ((1 - ny) / 2) * H;
-        px = Math.min(W - PAD_X, Math.max(PAD_X, px));
-        py = Math.min(H - padBottom, Math.max(padTop, py));
+        const py = above ? padTop : H - padBottom;
+        px = above
+          ? Math.min(W - PAD_X, Math.max(PAD_X, px))
+          : Math.min(bottomMaxX, Math.max(bottomMinX, px));
         // the arrow points from the chip toward the system (screen y is down)
         const ang = Math.atan2(-m.y, m.x);
         el.style.opacity = '1';
