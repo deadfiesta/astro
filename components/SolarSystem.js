@@ -1535,13 +1535,16 @@ const SolarSystem = forwardRef(function SolarSystem({
             if (!POSTCARD_SET.has(id) || have?.has(id)) continue;
             const ent = byId[id];
             ent.pivot.getWorldPosition(tmp3);
-            const d = tmp3.distanceTo(shuttle.group.position) - collectRadius(ent.data);
+            // reach grows with speed so a fly-past counts: at 40 u/s a
+            // tiny rock's sphere is ~13 units across instead of ~4
+            const reach = collectRadius(ent.data) + Math.min(flight.speed, 40) * 0.25;
+            const d = tmp3.distanceTo(shuttle.group.position) - reach;
             if (d < 0 && d < bestD) { bestD = d; bestId = id; }
           }
           if (bestId !== postcard.id) { postcard.id = bestId; postcard.dwell = 0; }
           if (bestId) {
             postcard.dwell += dt;
-            if (postcard.dwell >= 0.7) {
+            if (postcard.dwell >= 0.3) {
               postcard.id = null;
               postcard.dwell = 0;
               postcardBurst(byId[bestId]);
