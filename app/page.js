@@ -11,7 +11,6 @@ import SystemPicker from '@/components/SystemPicker';
 import FlightDeck from '@/components/FlightDeck';
 import MiniMap from '@/components/MiniMap';
 import SpeedReadout from '@/components/SpeedReadout';
-import EdgeMarkers from '@/components/EdgeMarkers';
 import StickerBook from '@/components/StickerBook';
 import { TOTAL, loadCollected, saveCollected, systemComplete, systemOf } from '@/lib/postcards';
 
@@ -156,7 +155,6 @@ export default function Home() {
   // the scene reports which star system the shuttle came down at
   const onFlightLand = useCallback((sys) => setSystemId(sys.id), []);
   const getMap = useCallback(() => sceneRef.current?.mapSnapshot() ?? null, []);
-  const getMarkers = useCallback(() => sceneRef.current?.edgeMarkers() ?? null, []);
 
   const pickFromBook = useCallback((id) => {
     setBookOpen(false);
@@ -224,7 +222,6 @@ export default function Home() {
         <FlightDeck visible={uiVisible && flying} input={flightInput} onLand={land} />
         <MiniMap visible={uiVisible && flying} getMap={getMap} />
         <SpeedReadout visible={uiVisible && flying} getMap={getMap} />
-        <EdgeMarkers visible={uiVisible && flying} getMarkers={getMarkers} />
         <motion.div
           id="credit"
           initial={{ opacity: 0 }}
