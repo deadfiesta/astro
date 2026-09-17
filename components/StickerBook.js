@@ -43,11 +43,11 @@ export default function StickerBook({ open, collected, onClose, onPick }) {
                   : 'Tap a postcard to visit that world again.'}
             </p>
             <div className="book-pages">
-              {PAGES.map(({ system, bodies }) => {
+              {PAGES.map(({ system, bodies, secret }) => {
                 const have = bodies.filter((b) => collected.has(b.id)).length;
                 const done = systemComplete(system.id, collected);
                 return (
-                  <section className={`book-page${done ? ' done' : ''}`} key={system.id}>
+                  <section className={`book-page${done ? ' done' : ''}${secret ? ' secret' : ''}`} key={system.id}>
                     <div className="page-head">
                       <span className="page-emoji" aria-hidden="true">{system.emoji}</span>
                       <span className="page-name">{system.name}</span>
@@ -55,6 +55,11 @@ export default function StickerBook({ open, collected, onClose, onPick }) {
                         {done ? '⭐ All found!' : `${have} / ${bodies.length}`}
                       </span>
                     </div>
+                    {secret && (
+                      <p className="page-hint">
+                        Real asteroids and comets are hiding out there with no name tags. Watch for a tiny twinkle!
+                      </p>
+                    )}
                     <div className="stamps">
                       {bodies.map((b) => {
                         const got = collected.has(b.id);

@@ -13,6 +13,7 @@ import {
 } from '@/lib/textures';
 import { buildAstronaut, pulseAstronautLights } from '@/lib/astronaut';
 import { buildShuttle, SHUTTLE_SCALE } from '@/lib/shuttle';
+import { buildSecrets, updateSecrets } from '@/lib/rocks';
 
 // chase-camera distances were tuned for the full-size model; this shrinks
 // them with the ship (a little less than SHUTTLE_SCALE, see the flight block).
@@ -531,6 +532,12 @@ const SolarSystem = forwardRef(function SolarSystem({
     // the Moon is selectable like a planet; its "pivot" is the mesh itself,
     // so world-position tracking follows it around Earth
     if (moonMesh) byId.moon = { data: MOON, pivot: moonMesh, label: moonLabelRef };
+    // secret postcards: unlabelled rocks and comets, tappable and collectable
+    const secrets = buildSecrets(scene);
+    for (const r of secrets) {
+      byId[r.data.id] = { data: r.data, pivot: r.pivot };
+      pickables.push(...r.pickable);
+    }
 
     // Bouncing astronaut: same take-off effort everywhere, so jump height and
     // hang time follow the selected world's real surface gravity (v² = 2gh).
@@ -1067,6 +1074,7 @@ const SolarSystem = forwardRef(function SolarSystem({
         b.mesh.rotation.y += d.spinSpeed * spd * dt * 2.2;
         if (b.moon) b.moon.rotation.y += 1.6 * spd * dt;
       }
+      updateSecrets(secrets, dt, spd, clock.elapsedTime);
 
       // formation intro: the nebula spirals in, bodies condense out of it,
       // orbit rings emerge, and the leftover dust dissipates

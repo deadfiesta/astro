@@ -1041,3 +1041,7 @@ body {
   .stamps { grid-template-columns: repeat(auto-fill, minmax(72px, 1fr)); }
   .stamp { min-height: 70px; }
 }
+/* the bonus page for hidden rocks and comets */
+.book-page.secret { border-style: dashed; border-color: rgba(159, 212, 255, 0.45); }
+.book-page.secret.done { border-style: solid; border-color: rgba(255, 201, 60, 0.7); }
+.page-hint { margin: -4px 0 10px; font-size: 13px; font-weight: 700; color: var(--ink-dim); }

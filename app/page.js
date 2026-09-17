@@ -199,8 +199,12 @@ export default function Home() {
               <span className="toast-emoji" aria-hidden="true">{toast.star ? '⭐' : toast.body.emoji}</span>
               <span className="toast-text">
                 {toast.star
-                  ? `You found every world in ${toast.system.name}!`
-                  : `Postcard from ${toast.body.name}!`}
+                  ? (toast.system.id === 'secrets'
+                    ? 'You found every secret in the galaxy!'
+                    : `You found every world in ${toast.system.name}!`)
+                  : toast.body.secret
+                    ? `Secret postcard: ${toast.body.name}! 🤫`
+                    : `Postcard from ${toast.body.name}!`}
               </span>
             </>
           )}
