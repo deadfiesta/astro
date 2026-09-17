@@ -177,6 +177,7 @@ export default function FlightDeck({ visible, input, onLand }) {
     >
       <div className="throttle" role="group" aria-label="Propulsion">
         <span className="throttle-icon" aria-hidden="true">🔥</span>
+        <kbd className="key-hint throttle-hint" aria-hidden="true">shift</kbd>
         <input
           type="range"
           className="throttle-slider"
@@ -188,6 +189,7 @@ export default function FlightDeck({ visible, input, onLand }) {
           aria-valuetext={`${pct} percent power`}
           onChange={(e) => setThrottleBoth(parseFloat(e.target.value))}
         />
+        <kbd className="key-hint throttle-hint" aria-hidden="true">space</kbd>
         <span className="throttle-readout">{pct}%</span>
         <button className="land-btn" onClick={onLand} aria-label="Land the shuttle and go back to exploring" title="Land (L)">
           <span aria-hidden="true">🛬</span>

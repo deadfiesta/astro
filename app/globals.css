@@ -1118,6 +1118,8 @@ body {
   opacity: 0.85;
 }
 .ctl.active .key-hint { color: var(--sun); }
+/* faster / slower key names bracketing the throttle slider */
+.throttle-hint { margin: -4px 0; letter-spacing: 0.02em; }
 /* no physical keyboard: hide the hints so the buttons stay clean — until
    the first real key press, which flags <html class="has-keyboard"> */
 @media (hover: none) and (pointer: coarse) {
